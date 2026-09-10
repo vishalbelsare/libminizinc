@@ -11,37 +11,41 @@
 
 #pragma once
 
+#include <minizinc/flatten_internal.hh>
+
 #include <iostream>
+#include <utility>
 #include <vector>
 
 namespace MiniZinc {
 
-  class Model;
-  
-  class HtmlDocument {
-  protected:
-    std::string _filename;
-    std::string _title;
-    std::string _doc;
-  public:
-    HtmlDocument(const std::string& filename, const std::string& title, const std::string& document)
-    : _filename(filename), _title(title), _doc(document) {}
-    std::string filename(void) const { return _filename; }
-    std::string title(void) const { return _title; }
-    std::string document(void) const { return _doc; }
-  };
-  
+class Model;
 
-  class HtmlPrinter {
-  public:
-    static std::vector<HtmlDocument> printHtml(EnvI& env, Model* m, const std::string& basename,
-                                               int splitLevel, bool includeStdLib, bool generateIndex);
-  };
-  
-  class RSTPrinter {
-  public:
-    static std::vector<HtmlDocument> printRST(EnvI& env, Model* m, const std::string& basename,
-                                              int splitLevel, bool includeStdLib, bool generateIndex);
-  };
+class HtmlDocument {
+protected:
+  std::string _filename;
+  std::string _title;
+  std::string _doc;
 
-}
+public:
+  HtmlDocument(std::string filename, std::string title, std::string document)
+      : _filename(std::move(filename)), _title(std::move(title)), _doc(std::move(document)) {}
+  std::string filename() const { return _filename; }
+  std::string title() const { return _title; }
+  std::string document() const { return _doc; }
+};
+
+class HtmlPrinter {
+public:
+  static std::vector<HtmlDocument> printHtml(EnvI& env, Model* m, const std::string& basename,
+                                             int splitLevel, bool includeStdLib,
+                                             bool generateIndex);
+};
+
+class RSTPrinter {
+public:
+  static std::vector<HtmlDocument> printRST(EnvI& env, Model* m, const std::string& basename,
+                                            int splitLevel, bool includeStdLib, bool generateIndex);
+};
+
+}  // namespace MiniZinc

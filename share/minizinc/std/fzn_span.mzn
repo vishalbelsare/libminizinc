@@ -1,7 +1,10 @@
-predicate fzn_span(var opt int: s0, var int: d0,
-                   array[int] of var opt int: s,
-                   array[int] of var int: d) =
-    (occurs(s0) <-> exists(i in index_set(s))(occurs(s[i]))) /\ 
-    s0 = min(s) /\
-    (absent(s0) -> d0 = 0) /\
-    s0 ~+ d0 = max([s[i] ~+ d[i] | i in index_set(s)]);
+predicate fzn_span(
+  var opt int: span_start,
+  var int: span_duration,
+  array [int] of var opt int: start,
+  array [int] of var int: duration,
+) =
+  (occurs(span_start) <-> exists (i in index_set(start)) (occurs(start[i]))) /\
+    span_start = min_weak(start) /\
+    (absent(span_start) -> span_duration = 0) /\
+    span_start ~+ span_duration = max_weak([start[i] ~+ duration[i] | i in index_set(start)]);

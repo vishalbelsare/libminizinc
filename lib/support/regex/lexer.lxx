@@ -13,9 +13,12 @@
 
 %option prefix="regex_yy"
 
-%{
-#include <cstdlib>
+%top{
+#include <cstdint>
+#include <string>
+}
 
+%{
 #define YY_DECL int yylex()
 
 #include <minizinc/support/regex.hh>
@@ -25,7 +28,7 @@
 %%
 
 [ \t\n] { /* ignore white space */ }
-[0-9]+  { regex_yylval.iValue = std::atoi(regex_yytext); return R_INTEGER; }
+[0-9]+  { regex_yylval.iValue = std::stoi(std::string(regex_yytext)); return R_INTEGER; }
 "|"     { return R_UNION; }
 "+"     { return R_PLUS; }
 "*"     { return R_STAR; }
@@ -40,9 +43,6 @@
 "]"     { return R_CLASS_CLOSE; }
 "-"     { return R_CLASS_RANGE; }
 "^"     { return R_CLASS_NEG; }
-
-[A-Za-z][A-Za-z0-9_]* { regex_yylval.sValue = strdup(yytext); return R_IDENTIFIER; }
-"'"[^\\'\xa\xd\x0]*"'" { regex_yylval.sValue = strdup(yytext); return R_IDENTIFIER; }
 
 .   {
   /* Catch all */

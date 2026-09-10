@@ -26,7 +26,16 @@ CMakeLists.txt.user
 .vscode/ipch
 tests/output
 tests/env
+tests/venv
 tests/.pytest_cache
 __pycache__/
 .mypy_cache/
 .vscode/settings.json
+_build/
+*.pyc
+.cache/
+!docs/Makefile
+result/
+
+# Generated MiniZinc library bundles
+share/minizinc/*.lib.mzn

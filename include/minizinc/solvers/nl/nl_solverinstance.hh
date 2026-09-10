@@ -6,68 +6,64 @@
 
 #pragma once
 
+#include <minizinc/ast.hh>
 #include <minizinc/flattener.hh>
 #include <minizinc/solver.hh>
-#include <minizinc/ast.hh>
-
 #include <minizinc/solvers/nl/nl_file.hh>
-
-#ifdef _WIN32
-#undef ERROR
-#endif
 
 namespace MiniZinc {
 
-  class NLSolverOptions : public SolverInstanceBase::Options {
-  public:
-    std::string nl_solver;
-    std::vector<std::string> nl_flags;
-    std::vector<MZNFZNSolverFlag> nl_solver_flags;
-    bool do_hexafloat = false;
-    bool do_keepfile = false;
-  };
+class NLSolverOptions : public SolverInstanceBase::Options {
+public:
+  std::string nlSolver;
+  std::vector<std::string> nlFlags;
+  std::vector<MZNFZNSolverFlag> nlSolverFlags;
+  bool doHexafloat = false;
+  bool doKeepfile = false;
+};
 
-  class NLSolverInstance : public SolverInstanceBase {
-    private:
-      std::string _fzn_solver;
-    protected:
-      Model* _fzn;
-      Model* _ozn;
+class NLSolverInstance : public SolverInstanceBase {
+protected:
+  Model* _fzn;
+  Model* _ozn;
 
-      NLFile nl_file;
+  NLFile _nlFile;
 
-    public:
-      NLSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
+public:
+  NLSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
 
-      ~NLSolverInstance(void);
+  ~NLSolverInstance() override;
 
-      Status next(void) {return SolverInstance::Status::ERROR;}
+  Status next() override { return SolverInstance::Status::ERROR; }
 
-      Status solve(void);
+  Status solve() override;
 
-      void processFlatZinc(void);
+  void processFlatZinc() override;
 
-      void resetSolver(void);
+  void resetSolver() override;
 
-    protected:
-      Expression* getSolutionValue(Id* id);
+protected:
+  static Expression* getSolutionValue(Id* id);
 
-      void analyse(const Item* i);
+  void analyse(const Item* i);
+};
 
-  };
+class NLSolverFactory : public SolverFactory {
+protected:
+  SolverInstanceBase* doCreateSI(Env& env, std::ostream& log,
+                                 SolverInstanceBase::Options* opt) override;
 
-  class NL_SolverFactory: public SolverFactory {
-  protected:
-    virtual SolverInstanceBase* doCreateSI(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
-  public:
-    NL_SolverFactory(void);
-    virtual SolverInstanceBase::Options* createOptions(void);
-    virtual std::string getDescription(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getVersion(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getId(void);
-    virtual bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv);
-    virtual void printHelp(std::ostream& os);
-    //void setAcceptedFlags(SolverInstanceBase::Options* opt, const std::vector<MZNFZNSolverFlag>& flags);
-  };
+public:
+  NLSolverFactory();
+  SolverInstanceBase::Options* createOptions() override;
+  std::string getDescription(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getVersion(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getId() override;
+  bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv,
+                     const std::string& workingDir = std::string()) override;
+  void printHelp(std::ostream& os) override;
+  // void setAcceptedFlags(SolverInstanceBase::Options* opt, const std::vector<MZNFZNSolverFlag>&
+  // flags);
+};
 
-}
+}  // namespace MiniZinc

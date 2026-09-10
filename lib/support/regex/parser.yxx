@@ -9,15 +9,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+%define api.header.include {<minizinc/support/regex_parser.tab.hh>}
+
 %{
 #include <cstdlib>
 #include <cstdio>
-#include <memory>
-#include <set>
-#include <unordered_map>
+#include <iostream>
 
-#include <gecode/minimodel.hh>
-#include <minizinc/values.hh>
+#include <minizinc/support/regex.hh>
+
 using namespace Gecode;
 using namespace MiniZinc;
 
@@ -30,7 +30,6 @@ extern FILE* yyin;
 typedef struct REContext{
   REG* expr;
   const IntSetVal& dom;
-  const std::unordered_map<std::string, int>& idMap;
 } REContext;
 
 void yyerror(REContext& ctx, const char* s);
@@ -61,7 +60,6 @@ void yyerror(REContext& ctx, const char* s);
 %token R_CLASS_NEG "^"
 %token<sValue> R_IDENTIFIER
 
-%type<iValue> literal
 %type<rValue> regex expression term factor atom
 %type<setValue> set_item set_items
 
@@ -128,11 +126,12 @@ factor:
     }
 
 atom:
-    literal
+    R_INTEGER
     { $$ = new REG($1); }
   | "."
     {
-      IntArgs range = IntArgs::create(ctx.dom.max().toInt() - ctx.dom.min().toInt() + 1, ctx.dom.min().toInt());
+      IntArgs range = IntArgs::create(static_cast<int>(ctx.dom.max().toInt() - ctx.dom.min().toInt()) + 1,
+                                      static_cast<int>(ctx.dom.min().toInt()));
       $$ = new REG(range);
     }
   | "[" set_items "]"
@@ -149,8 +148,8 @@ atom:
     {
       std::vector<int> diff;
       std::set<int> domain;
-      for(int i = ctx.dom.min().toInt(); i<=ctx.dom.max().toInt(); ++i) {
-        domain.insert(i);
+      for(auto i = ctx.dom.min().toInt(); i<=ctx.dom.max().toInt(); ++i) {
+        domain.insert(static_cast<int>(i));
       }
       std::set_difference(
         domain.begin(), domain.end(),
@@ -175,11 +174,11 @@ set_items:
     }
 
 set_item:
-    literal
+    R_INTEGER
     {
       $$ = new std::set<int>({$1});
     }
-  | literal "-" literal
+  | R_INTEGER "-" R_INTEGER
     {
       int from = $1;
       int to = $3;
@@ -192,18 +191,6 @@ set_item:
       }
     }
 
-literal:
-    R_INTEGER
-  | R_IDENTIFIER
-    {
-      std::string s($1);
-      auto find = ctx.idMap.find(s);
-      if (find == ctx.idMap.end()) {
-        throw std::runtime_error("Unknown identifier: " + s);
-      }
-      $$ = find->second;
-    }
-
 %%
 
 void yyerror(REContext& ctx, const char* s) {
@@ -211,10 +198,10 @@ void yyerror(REContext& ctx, const char* s) {
     throw std::runtime_error("Cannot parse regular expression: " + std::string(s));
 }
 
-std::unique_ptr<REG> regex_from_string(const std::string& regex_str, const IntSetVal& domain, const std::unordered_map<std::string, int>& identifiers) {
+std::unique_ptr<REG> regex_from_string(const std::string& regex_str, const IntSetVal& domain) {
     REG* expr = new REG();
     regex_yy_scan_string(regex_str.c_str());
-    REContext rctx = REContext{expr, domain, identifiers};
+    REContext rctx = REContext{expr, domain};
     int err = yyparse(rctx);
     if (err != 0) {
         throw std::runtime_error("Cannot parse regular expression, error code " + std::to_string(err));

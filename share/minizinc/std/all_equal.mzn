@@ -1,14 +1,19 @@
-include "all_equal_int.mzn";
-include "all_equal_set.mzn";
+include "fzn_all_equal_int.mzn";
+include "fzn_all_equal_int_reif.mzn";
+include "fzn_all_equal_set.mzn";
+include "fzn_all_equal_set_reif.mzn";
+
+predicate fzn_all_equal_int(array [int] of var int: xs);
+predicate fzn_all_equal_set(array [int] of var set of int: xs);
 
 /**  @group globals.alldifferent
-  Constrain the array of integers \a x to be all equal
+  Constrain the elements of the array \a xs to be all equal.
 */
-predicate all_equal(array[$X] of var int: x) =
-	all_equal_int(array1d(x));
+predicate all_equal(array [$X] of var $$E: xs) =
+  if length(xs) <= 1 then true else fzn_all_equal_int(enum2int(array1d(xs))) endif;
 
 /**  @group globals.alldifferent
-  Constrain the array of sets of integers \a x to be all equal
+  Constrain the elements of the array \a xs to be all equal.
 */
-predicate all_equal(array[$X] of var set of int: x) =
-	all_equal_set(array1d(x));
+predicate all_equal(array [$X] of var set of $$E: xs) =
+  if length(xs) <= 1 then true else fzn_all_equal_set(enum2int(array1d(xs))) endif;

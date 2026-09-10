@@ -11,38 +11,84 @@
 
 #pragma once
 
+#include <minizinc/ast.hh>
+#include <minizinc/prettyprinter.hh>
+#include <minizinc/warning.hh>
+
+#include <ios>
 #include <iterator>
+#include <memory>
 
 namespace MiniZinc {
 
-  class Statistics {
-    protected:
-      // time in milliseconds
-      unsigned long long _time;
-      // search nodes
-      unsigned long long _nodes;
-      // failures/ backtracks
-      unsigned long long _failures;
-      // current objective value
-      double _objective;
+/// Stream for writing statistics to.
+class StatisticsStream {
+private:
+  std::ostream& _os;
+  bool _json;
+  bool _first = true;
+  std::ios _ios;
+  std::vector<std::unique_ptr<Warning>> _warnings;
 
-    public:
-      Statistics() : _time(0), _nodes(0), _failures(0) {}
+  template <class T>
+  void addInternal(const std::string& stat, const T& value) {
+    if (_json) {
+      if (_first) {
+        _first = false;
+      } else {
+        _os << ", ";
+      }
+      _os << "\"" << Printer::escapeStringLit(stat) << "\": " << value;
+    } else {
+      _os << "%%%mzn-stat: " << stat << "=" << value << "\n";
+    }
+  }
 
-      virtual void print(std::ostream& os);
+public:
+  StatisticsStream(std::ostream& os, bool json = false);
+  ~StatisticsStream();
 
-      void time(unsigned long long t);
-      void nodes(unsigned long long n);
-      void failures(unsigned long long f);
-      void objective(double o);
+  void precision(std::streamsize prec, bool fixed = false);
+  void add(const std::string& stat, const Expression* value);
+  void add(const std::string& stat, int value);
+  void add(const std::string& stat, unsigned int value);
+  void add(const std::string& stat, long value);
+  void add(const std::string& stat, unsigned long value);
+  void add(const std::string& stat, long long value);
+  void add(const std::string& stat, unsigned long long value);
+  void add(const std::string& stat, double value);
+  void add(const std::string& stat, const std::string& value);
+  void addRaw(const std::string& stat, const std::string& value);
+};
 
-      unsigned long long time();
-      unsigned long long nodes();
-      unsigned long long failures();
-      double objective();
+class Statistics {
+protected:
+  // time in milliseconds
+  unsigned long long _time;
+  // search nodes
+  unsigned long long _nodes;
+  // failures/ backtracks
+  unsigned long long _failures;
+  // current objective value
+  double _objective;
 
-      Statistics& operator+=(Statistics& s);
-      
-      virtual void cleanup() { _time = _nodes = _failures = 0; }
-  };
-}
+public:
+  Statistics() : _time(0), _nodes(0), _failures(0) {}
+
+  virtual void print(std::ostream& os);
+
+  void time(unsigned long long t);
+  void nodes(unsigned long long n);
+  void failures(unsigned long long f);
+  void objective(double o);
+
+  unsigned long long time() const;
+  unsigned long long nodes() const;
+  unsigned long long failures() const;
+  double objective() const;
+
+  Statistics& operator+=(Statistics& s);
+
+  virtual void cleanup() { _time = _nodes = _failures = 0; }
+};
+}  // namespace MiniZinc

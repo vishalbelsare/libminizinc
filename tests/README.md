@@ -24,6 +24,11 @@ Use the `--solvers` option to specify a subset of solvers to use in the tests. T
 pytest --solvers gecode,chuffed
 ```
 
+Use the `--driver` option to specify the directory containing the minizinc executable. Otherwise, default directories and PATH will be used to locate it.
+```sh
+pytest --driver=../build
+```
+
 ## Multiple test suites
 
 To facilitate running the test suite with different minizinc options, `specs/suites.yml` contains configurations for running tests, or a subset of tests using different options.
@@ -115,6 +120,8 @@ expected: # The obtained result must match one of these
       whitespace ignored 
 - !Error
   type: MiniZincError # Name of the error type
+  message: Exact error message # Exact error message string (avoid using this as it's generally not portable)
+  regex: .*type-inst must be par set.* # Regex the start of the string must match (run with M and S flags)
 ```
 
 For a test to pass, at least one expected result must be a subset of the obtained result. That is, the obtained result can have more attributes, but not less, and corresponding attributes must match.

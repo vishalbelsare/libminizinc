@@ -1,30 +1,30 @@
 set(CMAKE_CXX_STANDARD 11)
 
+if(WIN32)
+  # _WIN32_WINNT is set for <Windows.h> such that the Vista+ process APIs used
+  # in include/minizinc/process.hh (STARTUPINFOEXW,
+  # PROC_THREAD_ATTRIBUTE_HANDLE_LIST) are available.
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0600)
+endif()
+
 option(USE_ADDRESS_SANITIZER "Use GCC Address Sanitizer" OFF)
 if(USE_ADDRESS_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+  set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer")
+  set(CMAKE_EXE_LINKER_FLAGS
+    "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer")
 endif()
 
 set(CMAKE_REQUIRED_QUIET $<NOT:${VERBOSE}>)
 
 include(CheckCXXCompilerFlag)
 
-set(SAFE_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
 check_cxx_compiler_flag(-Werror HAS_WERROR)
 
 if(HAS_WERROR)
   set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror")
 endif()
 
-check_cxx_source_compiles("int main(void) { static __thread int x; (void)x; return 0;}" HAS_ATTR_THREAD)
-
-if(NOT HAS_ATTR_THREAD)
-  check_cxx_source_compiles("int main(void) { __declspec(thread) static int x; (void)x; return 0;}" HAS_DECLSPEC_THREAD)
-endif()
-
-check_cxx_source_compiles("#include <cstdlib>
-int main(void) { long long int x = atoll(\"123\"); (void)x; }" HAS_ATOLL)
 check_cxx_source_compiles("
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,10 +56,3 @@ int main (int argc, char* argv[]) {
   (void) GetFileAttributes(NULL);
   return 0;
 }" HAS_GETFILEATTRIBUTES)
-
-check_cxx_source_compiles("
-#include <string.h>
-int main (int argc, char* argv[]) {
-  (void) memcpy_s(NULL,0,NULL,0);
-  return 0;
-}" HAS_MEMCPY_S)

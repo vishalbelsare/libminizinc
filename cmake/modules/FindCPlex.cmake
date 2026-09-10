@@ -8,7 +8,7 @@
 
 set(CPLEX_COMPILE_FLAGS "-fPIC -fno-strict-aliasing -fexceptions")
 
-set(CPLEX_VERSIONS 1210 129 128 1271 127 1263 1262 1261 126)
+set(CPLEX_VERSIONS 1210 129 128 1271 127 1263 1262 1261 126 201)
 
 foreach(VERSION ${CPLEX_VERSIONS})
   list(APPEND CPLEX_DEFAULT_LOC "/opt/ibm/ILOG/CPLEX_Studio${VERSION}")
@@ -33,26 +33,14 @@ if(NOT "${CPLEX_INCLUDE}" STREQUAL "CPLEX_INCLUDE-NOTFOUND")
   unset(CPLEX_CONFIG)
 endif()
 
-if(CPLEX_PLUGIN)
-  include(CheckIncludeFiles)
-  # TODO: Cleanup this mess
-  check_include_files(dlfcn.h HAS_DLFCN_H)
-  check_include_files(Windows.h HAS_WINDOWS_H)
-  if(HAS_DLFCN_H)
-    find_library(CPLEX_LIBRARY dl)
-  elseif(HAS_WINDOWS_H)
-    set(CPLEX_LIBRARY ${CPLEX_INCLUDE})
-  endif()
-else()
-  foreach(CPLEX_LIB ${CPLEX_LIB_NAMES})
-    find_library(CPLEX_LIBRARY NAMES cplex ${CPLEX_LIB}
-                 HINTS ${CPLEX_DEFAULT_LOC}
-                 PATH_SUFFIXES lib/x86-64_linux/static_pic lib/x86-64_osx/static_pic lib/x64_windows_vs2013/stat_mda cplex/lib/x86-64_linux/static_pic cplex/lib/x86-64_osx/static_pic cplex/lib/x64_windows_vs2013/stat_mda)
-    if(NOT "${CPLEX_LIBRARY}" STREQUAL "CPLEX_LIBRARY-NOTFOUND")
-      break()
-    endif()
-  endforeach(CPLEX_LIB)
-endif()
+foreach(CPLEX_LIB ${CPLEX_LIB_NAMES})
+	find_library(CPLEX_LIBRARY NAMES cplex ${CPLEX_LIB}
+							 HINTS ${CPLEX_DEFAULT_LOC}
+							 PATH_SUFFIXES lib/x86-64_linux/static_pic lib/x86-64_osx/static_pic lib/x64_windows_vs2013/stat_mda cplex/lib/x86-64_linux/static_pic cplex/lib/x86-64_osx/static_pic cplex/lib/x64_windows_vs2013/stat_mda)
+	if(NOT "${CPLEX_LIBRARY}" STREQUAL "CPLEX_LIBRARY-NOTFOUND")
+		break()
+	endif()
+endforeach(CPLEX_LIB)
 
 include(FindPackageHandleStandardArgs)
 # handle the QUIETLY and REQUIRED arguments and set CBC_FOUND to TRUE
@@ -61,12 +49,8 @@ find_package_handle_standard_args(CPlex
   FOUND_VAR CPLEX_FOUND
   REQUIRED_VARS CPLEX_INCLUDE CPLEX_LIBRARY
   VERSION_VAR CPLEX_VERSION
-  FAIL_MESSAGE "Could NOT find CPlex, use CPLEX_ROOT to hint its location"
+  FAIL_MESSAGE "Could NOT find CPlex, use CPlex_ROOT to hint its location"
 )
-
-if(CPLEX_PLUGIN AND HAS_WINDOWS_H AND NOT HAS_DLFCN_H)
-  unset(CPLEX_LIBRARY)
-endif()
 
 mark_as_advanced(CPLEX_INCLUDE CPLEX_LIBRARY)
 

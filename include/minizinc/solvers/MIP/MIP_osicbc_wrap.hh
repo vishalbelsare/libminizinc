@@ -1,4 +1,4 @@
- 
+
 /* -*- mode: C++; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 
 /*
@@ -12,149 +12,134 @@
 
 #pragma once
 
-#include <minizinc/solvers/MIP/MIP_wrap.hh>
+#include <minizinc/solver_config.hh>
 #include <minizinc/solver_instance_base.hh>
-                    // CMakeLists.txt needs OSICBC_HOME defined
+#include <minizinc/solvers/MIP/MIP_wrap.hh>
+// CMakeLists.txt needs OSICBC_HOME defined
 // #include <coin/CoinPackedVector.hpp>
 // #include <coin/CoinPackedMatrix.hpp>
 // #include <coin/CoinShallowPackedVector.hpp>
 // #include <coin/CoinTime.hpp>
 // #include <coin/OsiSolverInterface.hpp>
 //  #include <coin/OsiCbcSolverInterface.hpp>
-#include <coin/OsiClpSolverInterface.hpp>
 #include <coin/CbcModel.hpp>
+#include <coin/OsiClpSolverInterface.hpp>
 // #include <coin/CbcSolver.hpp>
 
+class MIPosicbcWrapper : public MIPWrapper {
+  OsiClpSolverInterface _osi;
+  int _error;
+  std::string _osicbcBuffer;  // [CBC_MESSAGEBUFSIZE];
+                              //     string          osicbc_status_buffer; // [CBC_MESSAGEBUFSIZE];
 
-class MIP_osicbc_wrapper : public MIP_wrapper {
-//     OsiCbcSolverInterface osi;   // deprecated in Cbc 2.9.6
-    OsiClpSolverInterface osi;
-//     CoinPackedMatrix* matrix = 0;
-    int             error;
-    std::string          osicbc_buffer;   // [CBC_MESSAGEBUFSIZE];
-//     string          osicbc_status_buffer; // [CBC_MESSAGEBUFSIZE];
-    
-    std::vector<double> x;
-    
-    // To add constraints:
-//     vector<int> rowStarts, columns;
-    std::vector<CoinPackedVector> rows;
-    std::vector<double> //element,
-      rowlb, rowub;
+  std::vector<double> _x;
 
-    std::unordered_map<VarId, double> warmstart;           // this accumulates warmstart infos
+  // To add constraints:
+  std::vector<CoinPackedVector> _rows;
+  std::vector<double>  // element,
+      _rowlb, _rowub;
 
+  std::unordered_map<VarId, double> _warmstart;  // this accumulates warmstart infos
+
+public:
+  class FactoryOptions {
   public:
+    // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+    bool processOption(int& i, std::vector<std::string>& argv, const std::string& workingDir) {
+      return false;
+    }
+  };
 
-    class Options : public MiniZinc::SolverInstanceBase::Options {
-    public:
-      int nThreads=1;
-      std::string sExportModel;
-      int nTimeout=0;
-      long int nSolLimit = -1;
-      double nWorkMemLimit=-1;
-      std::string sReadParams;
-      std::string sWriteParams;
-      bool flag_all_solutions = false;
-      
-      double absGap=-1;
-      double relGap=1e-8;
-      double intTol=1e-8;
-      double objDiff=1.0;
-      
-      std::string cbc_cmdOptions;
-      
-      bool processOption(int& i, std::vector<std::string>& argv);
-      static void printHelp(std::ostream& );
-    };
-  private:
-    Options* options=nullptr;
+  class Options : public MiniZinc::SolverInstanceBase::Options {
   public:
+    int nThreads = 1;
+    std::string sExportModel;
+    int nTimeout = 0;
+    long int nSolLimit = -1;
+    double nWorkMemLimit = -1;
+    std::string sReadParams;
+    std::string sWriteParams;
+    bool flagIntermediate = false;
 
-    MIP_osicbc_wrapper(Options* opt) : options(opt) { openOSICBC(); }
-    virtual ~MIP_osicbc_wrapper() { closeOSICBC(); }
-  
-    static std::string getDescription(MiniZinc::SolverInstanceBase::Options* opt=NULL);
-    static std::string getVersion(MiniZinc::SolverInstanceBase::Options* opt=NULL);
-    static std::string getId(void);
-    static std::string getName(void);
-    static std::vector<std::string> getTags(void);
-    static std::vector<std::string> getStdFlags(void);
-    static std::vector<std::string> getRequiredFlags(void) { return {}; };
+    double absGap = -1;
+    double relGap = 1e-8;
+    double intTol = 1e-8;
+    double objDiff = 1.0;
 
-    void printVersion(std::ostream& );
-    void printHelp(std::ostream& );
-//       Statistics& getStatistics() { return _statistics; }
+    std::vector<std::string> cbcCmdOptions;
 
-//      IloConstraintArray *userCuts, *lazyConstraints;
+    std::unordered_map<std::string, std::string> extraParams;
 
-    /// derived should overload and call the ancestor
-//     virtual void cleanup();
-    void openOSICBC() { }
-    void closeOSICBC() { }
-    
-    /// actual adding new variables to the solver
-    virtual void doAddVars(size_t n, double *obj, double *lb, double *ub,
-      VarType *vt, std::string *names);
-    
-    void addPhase1Vars() {
-      if (fVerbose)
-        std::cerr << "  MIP_osicbc_wrapper: delaying physical addition of variables..." << std::endl;
+    bool processOption(int& i, std::vector<std::string>& argv,
+                       const std::string& workingDir = std::string());
+    static void printHelp(std::ostream& os);
+  };
+
+private:
+  Options* _options = nullptr;
+
+public:
+  MIPosicbcWrapper(FactoryOptions& factoryOpt, Options* opt) : _options(opt) { openOSICBC(); }
+  ~MIPosicbcWrapper() override { closeOSICBC(); }
+
+  static std::string getDescription(FactoryOptions& factoryOpt,
+                                    MiniZinc::SolverInstanceBase::Options* opt = nullptr);
+  static std::string getVersion(FactoryOptions& factoryOpt,
+                                MiniZinc::SolverInstanceBase::Options* opt = nullptr);
+  static std::string getId();
+  static std::string getName();
+  static std::vector<std::string> getTags();
+  static std::vector<std::string> getStdFlags();
+  static std::vector<std::string> getRequiredFlags(FactoryOptions& factoryOpt) { return {}; };
+  static std::vector<std::string> getFactoryFlags() { return {}; };
+
+  static std::vector<MiniZinc::SolverConfig::ExtraFlag> getExtraFlags(FactoryOptions& factoryOpt);
+
+  void printVersion(std::ostream&);
+  void printHelp(std::ostream&);
+
+  /// derived should overload and call the ancestor
+  void openOSICBC() {}
+  void closeOSICBC() {}
+
+  /// actual adding new variables to the solver
+  void doAddVars(size_t n, double* obj, double* lb, double* ub, VarType* vt,
+                 std::string* names) override;
+
+  void addPhase1Vars() override {
+    if (fVerbose) {
+      std::cerr << "  MIPosicbcWrapper: delaying physical addition of variables..." << std::endl;
     }
+  }
 
-    /// adding a linear constraint
-    virtual void addRow(int nnz, int *rmatind, double* rmatval,
-                        LinConType sense, double rhs,
-                        int mask = MaskConsType_Normal,
-                        std::string rowName = "");
-    /// adding an implication
-//     virtual void addImpl() = 0;
+  /// adding a linear constraint
+  void addRow(int nnz, int* rmatind, double* rmatval, LinConType sense, double rhs,
+              int mask = MaskConsType_Normal, const std::string& rowName = "") override;
 
-    virtual bool addWarmStart( const std::vector<VarId>& vars, const std::vector<double> vals );
+  bool addWarmStart(const std::vector<VarId>& vars, const std::vector<double>& vals) override;
 
-    virtual void setObjSense(int s);   // +/-1 for max/min
-    
-    virtual double getInfBound() { return osi.getInfinity(); }
-                        
-    virtual int getNCols() {
-      int nc = osi.getNumCols();
-      return nc ? nc : colLB.size();
+  void setObjSense(int s) override;  // +/-1 for max/min
+
+  double getInfBound() override { return _osi.getInfinity(); }
+
+  int getNCols() override {
+    int nc = _osi.getNumCols();
+    return nc != 0 ? nc : static_cast<int>(colLB.size());
+  }
+  int getNColsModel() override { return _osi.getNumCols(); }
+  int getNRows() override {
+    if (!_rowlb.empty()) {
+      return static_cast<int>(_rowlb.size());
     }
-    virtual int getNColsModel() {
-      return osi.getNumCols();
-    }
-    virtual int getNRows() {
-      if (rowlb.size())
-        return rowlb.size();
-      return osi.getNumRows();
-    }
-                        
-//     void setObjUB(double ub) { objUB = ub; }
-//     void addQPUniform(double c) { qpu = c; } // also sets problem type to MIQP unless c=0
+    return _osi.getNumRows();
+  }
 
-    virtual void solve(); 
-    
-    /// OUTPUT:
-    virtual const double* getValues() { return output.x; }
-    virtual double getObjValue() { return output.objVal; }
-    virtual double getBestBound() { return output.bestBound; }
-    virtual double getCPUTime() { return output.dCPUTime; }
-    
-    virtual Status getStatus()  { return output.status; }
-    virtual std::string getStatusName() { return output.statusName; }
+  void solve() override;
 
-     virtual int getNNodes() { return output.nNodes; }
-     virtual int getNOpen() { return output.nOpenNodes; }
+protected:
+  void wrapAssert(bool cond, const std::string& msg);
 
-//     virtual int getNNodes() = 0;
-//     virtual double getTime() = 0;
-    
-  protected:
-//     OsiSolverInterface& getOsiSolver(void) { return osi; }
-
-    void wrap_assert(bool , std::string , bool fTerm=true);
-    
-    /// Need to consider the 100 status codes in OSICBC and change with every version? TODO
-    Status convertStatus(CbcModel *pModel);
-    Status convertStatus();
+  /// Need to consider the 100 status codes in OSICBC and change with every version? TODO
+  Status convertStatus(CbcModel* pModel);
+  Status convertStatus();
 };

@@ -13,71 +13,94 @@
 
 #include <minizinc/flattener.hh>
 #include <minizinc/solver.hh>
-//#include <minizinc/solver_instance_base.hh>
 
 namespace MiniZinc {
 
-  class FZNSolverOptions : public SolverInstanceBase::Options {
-  public:
-    std::string fzn_solver;
-    std::string backend;
-    std::vector<std::string> fzn_flags;
-    int numSols = 1;
-    bool allSols = false;
-    std::string parallel;
-    int fzn_time_limit_ms = 0;
-    int solver_time_limit_ms = 0;
-    bool fzn_sigint = false;
+class FZNSolverOptions : public SolverInstanceBase::Options {
+public:
+  std::string fznSolver;
+  std::string backend;
+  std::vector<std::string> fznFlags;
+  int numSols = 1;
+  std::string parallel;
+  int solverTimeLimitMilliseconds = 0;
+  int cleanupTimeLimitMilliseconds = 1000;
+  bool fznSigint = false;
+  /// Number of (optimal) solutions to output
+  bool numOptimal = true;
+  bool allOptimal = false;
 
-    bool fzn_needs_paths = false;
-    bool fzn_output_passthrough = false;
-    
-    bool supports_a = false;
-    bool supports_n = false;
-    bool supports_f = false;
-    bool supports_p = false;
-    bool supports_s = false;
-    bool supports_r = false;
-    bool supports_v = false;
-    bool supports_t = false;
-    std::vector<MZNFZNSolverFlag> fzn_solver_flags;
-  };
+  bool fznNeedsPaths = false;
+  bool fznOutputPassthrough = false;
 
-  class FZNSolverInstance : public SolverInstanceBase {
-    private:
-      std::string _fzn_solver;
-    protected:
-      Model* _fzn;
-      Model* _ozn;
-    public:
-      FZNSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
+  /// Interactive solver: share the user's terminal stdin with the solver and
+  /// scan its stdout for solution blocks delimited by the markers below, which
+  /// are routed through solns2out; all other output is echoed verbatim.
+  bool interactive = false;
+  std::string interactiveBegin = "%%%mzn-sol-begin";
+  std::string interactiveEnd = "%%%mzn-sol-end";
 
-      ~FZNSolverInstance(void);
+  /// Whether solver accepts input in traditional FlatZinc or JSON
+  enum FZNFormat { FF_FZN, FF_JSON };
+  FZNFormat fznFormat = FF_FZN;
 
-      Status next(void) {return SolverInstance::ERROR;}
+  bool supportsA = false;
+  bool supportsN = false;
+  bool supportsF = false;
+  bool supportsP = false;
+  bool supportsS = false;
+  bool supportsR = false;
+  bool supportsV = false;
+  bool supportsT = false;
+  bool supportsI = false;
+  bool supportsNO = false;
+  bool supportsAO = false;
+  bool supportsCpprofiler = false;
+  std::vector<MZNFZNSolverFlag> fznSolverFlags;
+};
 
-      Status solve(void);
+class FZNSolverInstance : public SolverInstanceBase {
+private:
+  std::string _fznSolver;
 
-      void processFlatZinc(void);
+protected:
+  Model* _fzn;
+  Model* _ozn;
 
-      void resetSolver(void);
+public:
+  FZNSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
 
-    protected:
-      Expression* getSolutionValue(Id* id);
-  };
+  ~FZNSolverInstance() override;
 
-  class FZN_SolverFactory: public SolverFactory {
-  protected:
-    virtual SolverInstanceBase* doCreateSI(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
-  public:
-    FZN_SolverFactory(void);
-    virtual SolverInstanceBase::Options* createOptions(void);
-    virtual std::string getDescription(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getVersion(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getId(void);
-    virtual bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv);
-    virtual void printHelp(std::ostream& os);
-    void setAcceptedFlags(SolverInstanceBase::Options* opt, const std::vector<MZNFZNSolverFlag>& flags);
-  };
+  Status next() override { return SolverInstance::ERROR; }
 
-}
+  Status solve() override;
+
+  void processFlatZinc() override;
+
+  void resetSolver() override;
+
+protected:
+  static Expression* getSolutionValue(Id* id);
+};
+
+class FZNSolverFactory : public SolverFactory {
+protected:
+  SolverInstanceBase* doCreateSI(Env& env, std::ostream& log,
+                                 SolverInstanceBase::Options* opt) override;
+
+public:
+  FZNSolverFactory();
+  SolverInstanceBase::Options* createOptions() override;
+  std::string getDescription(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getVersion(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getId() override;
+  bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv,
+                     const std::string& workingDir = std::string()) override;
+  void printHelp(std::ostream& os) override;
+  static void setAcceptedFlags(SolverInstanceBase::Options* opt,
+                               const std::vector<MZNFZNSolverFlag>& flags,
+                               const SolverConfig::InputType& inputType);
+};
+
+}  // namespace MiniZinc

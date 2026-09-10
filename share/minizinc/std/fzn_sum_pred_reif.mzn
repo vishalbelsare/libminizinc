@@ -1,6 +1,10 @@
-predicate fzn_sum_pred_reif(var int: i, array[int] of set of int: sets,
-                            array[int] of int: cs, var int: s, var bool: b) =
-    let {
-        array[index_set(sets)] of int: sums = [ sum(i in sets[j])(cs[i]) | j in index_set(sets) ];
-    } in b <-> sums[i] = s; 
-
+predicate fzn_sum_pred_reif(
+  var int: idx,
+  array [int] of set of int: sets,
+  array [int] of int: coefficients,
+  var int: total,
+  var bool: b,
+) =
+  let {
+    array [index_set(sets)] of int: sums = [sum (k in sets[j]) (coefficients[k]) | j in index_set(sets)];
+  } in b <-> sums[idx] = total;

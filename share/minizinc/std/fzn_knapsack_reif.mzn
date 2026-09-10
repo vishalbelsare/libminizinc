@@ -1,8 +1,16 @@
-predicate fzn_knapsack_reif(array[int] of int: w, array[int] of int:p, 
-                            array[int] of var int:x, var int: W, var int: P, var bool: b) = 
-    b <-> (
-      forall (i in index_set(x)) (x[i] >= 0) /\
-      W >= 0 /\ P >= 0 /\
-      P = sum(i in index_set(p)) (x[i]*p[i]) /\
-      W = sum(i in index_set(w)) (x[i]*w[i])
+predicate fzn_knapsack_reif(
+  array [int] of int: weight,
+  array [int] of int: profit,
+  array [int] of var int: xs,
+  var int: total_weight,
+  var int: total_profit,
+  var bool: b,
+) =
+  b <->
+    (
+      forall (i in index_set(xs)) (xs[i] >= 0) /\
+        total_weight >= 0 /\
+        total_profit >= 0 /\
+        total_profit = sum (i in index_set(profit)) (xs[i] * profit[i]) /\
+        total_weight = sum (i in index_set(weight)) (xs[i] * weight[i])
     );

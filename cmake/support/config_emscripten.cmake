@@ -1,58 +1,68 @@
 if (DEFINED EMSCRIPTEN)
+  option(ENABLE_WASM "Enable WebAssembly build" ON)
+  option(ENABLE_ASM_JS "Enable asm.js build" OFF)
+
+  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/share/minizinc)
+
   add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js
-                     COMMAND python ${EMSCRIPTEN_ROOT_PATH}/tools/file_packager.py minizinc.data --lz4 --preload ${PROJECT_SOURCE_DIR}/share@/minizinc --from-emcc --js-output=${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js
+                     COMMAND python3 ${EMSCRIPTEN_ROOT_PATH}/tools/file_packager.py minizinc.data --lz4 --preload ${PROJECT_SOURCE_DIR}/share/minizinc@usr/share/minizinc ${CMAKE_BINARY_DIR}/share/minizinc@usr/share/minizinc --from-emcc --js-output=${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js
                      COMMENT "building data store minizinc.data")
+  
+  add_custom_target(file_packager DEPENDS ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
 
-  set(EMSCRIPTEN_CXX_FLAGS "-s MINIZ_NO_ARCHIVE_APIS -s MINIZ_NO_ZLIB_APIS")
-  set(EMSCRIPTEN_LINK_FLAGS " -s FORCE_FILESYSTEM=1 -s LZ4=1 -s MODULARIZE=1 -s EXTRA_EXPORTED_RUNTIME_METHODS=\"['callMain', 'cwrap', 'FS', 'ENV']\" -s DISABLE_EXCEPTION_CATCHING=0 -s BINARYEN_TRAP_MODE=\"clamp\" -s ALLOW_MEMORY_GROWTH=1 --no-heap-copy")
+  add_dependencies(minizinc file_packager)
+  add_dependencies(mzn2doc file_packager)
 
-  # -------------------------------------------------------------------------------------------------------------------
-  #  -- Web Assembly Configuration.
+  set(EMSCRIPTEN_CXX_FLAGS "-fexceptions")
+  set(EMSCRIPTEN_LINK_FLAGS "-s FORCE_FILESYSTEM=1 -s LZ4=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=callMain,cwrap,FS,ENV -s ALLOW_MEMORY_GROWTH=1 -s INITIAL_MEMORY=33554432 -s STACK_SIZE=4194304 -fexceptions")
 
-  # MiniZinc main executable
-  em_link_pre_js(minizinc ${PROJECT_SOURCE_DIR}/cmake/support/emscripten_file_packager_patch.js)
-  em_link_pre_js(minizinc ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMSCRIPTEN_CXX_FLAGS}")
 
-  set_target_properties(minizinc PROPERTIES CXX_FLAGS ${EMSCRIPTEN_CXX_FLAGS})
-  set_target_properties(minizinc PROPERTIES LINK_FLAGS "-s WASM=1 -s EXPORT_NAME=\"'MINIZINC'\" ${EMSCRIPTEN_LINK_FLAGS}")
+  if (ENABLE_WASM)
+    # -------------------------------------------------------------------------------------------------------------------
+    #  -- Web Assembly Configuration.
 
-  install(FILES ${PROJECT_BINARY_DIR}/minizinc.wasm DESTINATION bin)
-  install(FILES ${PROJECT_BINARY_DIR}/minizinc.data DESTINATION bin)
+    # MiniZinc main executable
+    em_link_pre_js(minizinc ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
 
-  # mzn2doc executable
-  em_link_pre_js(mzn2doc ${PROJECT_SOURCE_DIR}/cmake/support/emscripten_file_packager_patch.js)
-  em_link_pre_js(mzn2doc ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
+    set_target_properties(minizinc PROPERTIES LINK_FLAGS "-s WASM=1 -s EXPORT_NAME=\"'MINIZINC'\" ${EMSCRIPTEN_LINK_FLAGS}")
 
-  set_target_properties(mzn2doc PROPERTIES CXX_FLAGS ${EMSCRIPTEN_CXX_FLAGS})
-  set_target_properties(mzn2doc PROPERTIES LINK_FLAGS "-s WASM=1 -s EXPORT_NAME=\"'MZN2DOC'\" ${EMSCRIPTEN_LINK_FLAGS}")
-  install(FILES ${PROJECT_BINARY_DIR}/mzn2doc.wasm DESTINATION bin)
+    install(FILES ${PROJECT_BINARY_DIR}/minizinc.wasm DESTINATION bin)
+    install(FILES ${PROJECT_BINARY_DIR}/minizinc.data DESTINATION bin)
 
-  # -------------------------------------------------------------------------------------------------------------------
-  #  -- ASM.js (JavaScript) Configuration.
+    # mzn2doc executable
+    em_link_pre_js(mzn2doc ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
 
-  # MiniZinc main executable
-  add_executable(minizinc_asm minizinc.cpp)
-  target_link_libraries(minizinc_asm mzn)
+    set_target_properties(mzn2doc PROPERTIES LINK_FLAGS "-s WASM=1 -s EXPORT_NAME=\"'MZN2DOC'\" ${EMSCRIPTEN_LINK_FLAGS}")
+    install(FILES ${PROJECT_BINARY_DIR}/mzn2doc.wasm DESTINATION bin)
+  endif()
 
-  em_link_pre_js(minizinc_asm ${PROJECT_SOURCE_DIR}/cmake/support/emscripten_file_packager_patch.js)
-  em_link_pre_js(minizinc_asm ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
+  if (ENABLE_ASM_JS)
+    # -------------------------------------------------------------------------------------------------------------------
+    #  -- ASM.js (JavaScript) Configuration.
 
-  set_target_properties(minizinc_asm PROPERTIES CXX_FLAGS ${EMSCRIPTEN_CXX_FLAGS})
-  set_target_properties(minizinc_asm PROPERTIES LINK_FLAGS "-s WASM=0 -s EXPORT_NAME=\"'MINIZINC'\" ${EMSCRIPTEN_LINK_FLAGS}")
+    # MiniZinc main executable
+    add_executable(minizinc_asm minizinc.cpp)
+    add_dependencies(minizinc_asm file_packager)
+    target_link_libraries(minizinc_asm mzn)
 
-  install(TARGETS minizinc_asm RUNTIME DESTINATION bin)
-  install(FILES $<TARGET_FILE_NAME:minizinc_asm>.mem DESTINATION bin)
+    em_link_pre_js(minizinc_asm ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
 
-  # mzn2doc executable
-  add_executable(mzn2doc_asm mzn2doc.cpp)
-  target_link_libraries(mzn2doc_asm mzn)
+    set_target_properties(minizinc_asm PROPERTIES LINK_FLAGS "-s WASM=0 -s EXPORT_NAME=\"'MINIZINC'\" ${EMSCRIPTEN_LINK_FLAGS}")
 
-  em_link_pre_js(mzn2doc_asm ${PROJECT_SOURCE_DIR}/cmake/support/emscripten_file_packager_patch.js)
-  em_link_pre_js(mzn2doc_asm ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
+    install(TARGETS minizinc_asm RUNTIME DESTINATION bin)
+    install(FILES $<TARGET_FILE_NAME:minizinc_asm>.mem DESTINATION bin)
 
-  set_target_properties(mzn2doc_asm PROPERTIES CXX_FLAGS ${EMSCRIPTEN_CXX_FLAGS})
-  set_target_properties(mzn2doc_asm PROPERTIES LINK_FLAGS "-s WASM=0 -s EXPORT_NAME=\"'MZN2DOC'\" ${EMSCRIPTEN_LINK_FLAGS}")
+    # mzn2doc executable
+    add_executable(mzn2doc_asm mzn2doc.cpp)
+    add_dependencies(mzn2doc_asm file_packager)
+    target_link_libraries(mzn2doc_asm mzn)
 
-  install(TARGETS mzn2doc_asm RUNTIME DESTINATION bin)
-  install(FILES $<TARGET_FILE_NAME:mzn2doc_asm>.mem DESTINATION bin)
+    em_link_pre_js(mzn2doc_asm ${PROJECT_BINARY_DIR}/CMakeFiles/file_packager.js)
+
+    set_target_properties(mzn2doc_asm PROPERTIES LINK_FLAGS "-s WASM=0 -s EXPORT_NAME=\"'MZN2DOC'\" ${EMSCRIPTEN_LINK_FLAGS}")
+
+    install(TARGETS mzn2doc_asm RUNTIME DESTINATION bin)
+    install(FILES $<TARGET_FILE_NAME:mzn2doc_asm>.mem DESTINATION bin)
+  endif()
 endif()

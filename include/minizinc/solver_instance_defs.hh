@@ -10,27 +10,29 @@ class MultipleObjectivesTemplate {
 public:
   class Objective {
   public:
-    Objective() { }
-    Objective(Var v, double w) : objVar_{v}, weight_(w) { }
-    Var getVariable() const { return objVar_; }
-    double getWeight() const { return weight_; }
-    void setVariable(Var vd) { objVar_=vd; }
-    void setWeight(double w) { weight_=w; }
+    Objective() {}
+    Objective(Var v, double w) : _objVar{v}, _weight(w) {}
+    Var getVariable() const { return _objVar; }
+    double getWeight() const { return _weight; }
+    void setVariable(Var vd) { _objVar = vd; }
+    void setWeight(double w) { _weight = w; }
+
   private:
-    Var objVar_ {};
-    double weight_ = 1.0;
+    Var _objVar{};
+    double _weight = 1.0;
   };
   using ArrayOfObjectives = std::vector<Objective>;
-  const ArrayOfObjectives& getObjectives() const { return objs_; }
-  size_t size() const { return objs_.size(); }
-  void add(const Objective& obj) { objs_.push_back(obj); }
+  const ArrayOfObjectives& getObjectives() const { return _objs; }
+  size_t size() const { return _objs.size(); }
+  void add(const Objective& obj) { _objs.push_back(obj); }
+
 private:
-  ArrayOfObjectives objs_;
+  ArrayOfObjectives _objs;
 };
 
 /// Typical MultipleObjectives
 using MultipleObjectives = MultipleObjectivesTemplate<Expression*>;
 
-}
+}  // namespace MiniZinc
 
-#endif // SOLVER_INSTANCE_DEFS_HH
+#endif  // SOLVER_INSTANCE_DEFS_HH

@@ -1,0 +1,107 @@
+name: Code Quality
+
+# clang-format + clang-tidy over the whole tree, gated on C/C++ changes.
+# Independent of the compiler build artifacts, so it lives in its own workflow
+# for fast feedback.
+#
+# The clang tools are pinned so what is enforced does not drift; bumping the pins
+# may surface new findings that need fixing.
+
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  # Separate versions: the PyPI packages do not publish identical patch releases.
+  CLANG_FORMAT_VERSION: "18.1.8"
+  CLANG_TIDY_VERSION: "18.1.8"
+
+jobs:
+  changes:
+    name: detect C/C++ changes
+    runs-on: ubuntu-24.04
+    outputs:
+      cpp: ${{ steps.f.outputs.cpp }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: f
+        with:
+          filters: |
+            cpp:
+              - '**/*.cpp'
+              - '**/*.c'
+              - '**/*.h'
+              - '**/*.hh'
+              - '**/*.hpp'
+              - '.clang-format'
+              - '.clang-tidy'
+              - '.github/workflows/lint.yml'
+
+  format:
+    name: clang-format
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install clang-format
+        run: pip install "clang-format==${CLANG_FORMAT_VERSION}"
+      - name: clang-format (check only)
+        run: |
+          cmake -S . -B build -DCLANG_FORMAT_FLAGS="--dry-run --Werror --color=1"
+          cmake --build build --target format
+
+  analyse:
+    name: clang-tidy
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install clang-tidy + ninja
+        run: |
+          pip install "clang-tidy==${CLANG_TIDY_VERSION}"
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build
+      # -no-pie: the vendor archives are non-PIC, gcc here defaults to PIE.
+      # CMAKE_REQUIRE_FIND_PACKAGE_*: a fetched-but-unfound dep must fail loudly,
+      # or this job goes back to silently analysing no backends at all.
+      - name: Fetch pinned vendor deps
+        shell: bash
+        run: bash scripts/fetch_vendor.sh x86_64-linux-gnu gecode cbc chuffed highs
+      - name: clang-tidy
+        run: |
+          cmake -S . -B build -GNinja \
+            -DCMAKE_CXX_CLANG_TIDY="clang-tidy" \
+            -DCMAKE_BUILD_TYPE="Debug" \
+            -DCMAKE_EXE_LINKER_FLAGS="-no-pie" \
+            -DGecode_ROOT="$PWD/vendor/gecode" \
+            -DOsiCBC_ROOT="$PWD/vendor/cbc" \
+            -DCMAKE_REQUIRE_FIND_PACKAGE_Gecode=ON \
+            -DCMAKE_REQUIRE_FIND_PACKAGE_OsiCBC=ON \
+            -DCMAKE_REQUIRE_FIND_PACKAGE_chuffed=ON
+          cmake --build build --config Debug -- -k 0
+      # MIP_highs_wrap.cpp guards its two loader paths on HIGHS_PLUGIN, so the
+      # build above only sees the plugin side. This covers the linked-in side that
+      # wasm ships. Object target only, so nothing is linked.
+      - name: clang-tidy (HiGHS linked in)
+        run: |
+          cmake -S . -B build-highs -GNinja \
+            -DCMAKE_CXX_CLANG_TIDY="clang-tidy" \
+            -DCMAKE_BUILD_TYPE="Debug" \
+            -DHIGHS_PLUGIN=OFF
+          cmake --build build-highs --target minizinc_highs -- -k 0

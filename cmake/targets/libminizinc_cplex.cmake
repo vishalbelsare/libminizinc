@@ -1,26 +1,22 @@
 ### MiniZinc CPLEX Solver Target
 
-if(CPLEX_FOUND AND USE_CPLEX)
+if (NOT DEFINED EMSCRIPTEN)
+	### Compile target for the CPlex interface
+	add_library(minizinc_cplex OBJECT
+		solvers/MIP/MIP_cplex_wrap.cpp
 
-  ### Compile target for the CPlex interface
-  add_library(minizinc_cplex OBJECT
-    lib/algorithms/min_cut.cpp
+		include/minizinc/solvers/MIP/MIP_cplex_wrap.hh
+	)
 
-    solvers/MIP/MIP_cplex_solverfactory.cpp
-    solvers/MIP/MIP_cplex_wrap.cpp
-    solvers/MIP/MIP_solverinstance.cpp
+	if(NOT CPLEX_PLUGIN)
+	target_include_directories(minizinc_cplex PRIVATE ${CPLEX_INCLUDE_DIRS})
+		target_link_libraries(mzn ${CPLEX_LIBRARIES})
+		set_target_properties(minizinc_cplex PROPERTIES COMPILE_FLAGS ${CPLEX_COMPILE_FLAGS})
+		set_target_properties(mzn PROPERTIES COMPILE_FLAGS ${CPLEX_COMPILE_FLAGS})
+	endif()
 
-    include/minizinc/solvers/MIP/MIP_cplex_solverfactory.hh
-    include/minizinc/solvers/MIP/MIP_cplex_wrap.hh
-    include/minizinc/solvers/MIP/MIP_solverinstance.hh
-  )
-  set_target_properties(minizinc_cplex PROPERTIES COMPILE_FLAGS ${CPLEX_COMPILE_FLAGS})
-  target_include_directories(minizinc_cplex PRIVATE ${CPLEX_INCLUDE_DIRS})
-  add_dependencies(minizinc_cplex minizinc_parser)
-
-  ### Setup correct compilation into the MiniZinc library
-  target_compile_definitions(mzn PRIVATE HAS_CPLEX)
-  target_sources(mzn PRIVATE $<TARGET_OBJECTS:minizinc_cplex>)
-  set_target_properties(mzn PROPERTIES COMPILE_FLAGS ${CPLEX_COMPILE_FLAGS})
-  target_link_libraries(mzn ${CPLEX_LIBRARIES})
+	### Setup correct compilation into the MiniZinc library
+	add_dependencies(minizinc_cplex minizinc_mip)
+	target_compile_definitions(mzn PRIVATE HAS_CPLEX)
+	target_sources(mzn PRIVATE $<TARGET_OBJECTS:minizinc_cplex>)
 endif()

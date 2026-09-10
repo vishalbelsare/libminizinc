@@ -11,54 +11,81 @@
 
 #pragma once
 
-#include <vector>
+#include <minizinc/astexception.hh>
+#include <minizinc/astmap.hh>
+#include <minizinc/model.hh>
+
 #include <fstream>
 #include <string>
-#include <minizinc/model.hh>
-#include <minizinc/astexception.hh>
+#include <vector>
 
 namespace MiniZinc {
-  
-  class JSONError : public LocationException {
-  public:
-    JSONError(EnvI& env, const Location& loc, const std::string& msg)
-    : LocationException(env,loc,msg) {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: JSON parsing error";
-    }
-    
-  };
 
-  class JSONParser {
-  protected:
-    enum TokenT { T_LIST_OPEN, T_LIST_CLOSE, T_OBJ_OPEN, T_OBJ_CLOSE, T_COMMA, T_COLON,
-      T_STRING, T_INT, T_FLOAT, T_BOOL, T_NULL, T_EOF } t;
+class JSONError : public LocationException {
+public:
+  JSONError(EnvI& env, const Location& loc, const std::string& msg)
+      : LocationException(env, loc, msg) {}
+  const char* what() const throw() override { return "JSON parsing error"; }
+};
 
-    class Token;
-    EnvI& env;
-    int line;
-    int column;
-    std::string filename;
-    Location errLocation(void) const;
-    Token readToken(std::istream& is);
-    void expectToken(std::istream& is, TokenT t);
-    std::string expectString(std::istream& is);
-    Token parseEnumString(std::istream& is);
-    Expression* parseExp(std::istream& is);
-    ArrayLit* parseArray(std::istream& is);
-    Expression* parseObject(std::istream& is);
-    
-    void parse(Model*m, std::istream& is, bool ignoreUnknown);
-  public:
-    JSONParser(EnvI& env0) : env(env0) {}
-    /// Parses \a filename as MiniZinc data and creates assign items in \a m
-    void parse(Model* m, const std::string& filename, bool ignoreUnknown = false);
-    /// Parses \a data as JSON-encoded MiniZinc data and creates assign items in \a m
-    void parseFromString(Model* m, const std::string& data, bool ignoreUnknown = false);
-    /// Check if file \a filename may contain JSON-encoded MiniZinc data
-    static bool fileIsJSON(const std::string& filename);
-    /// Check if string \a data may contain JSON-encoded MiniZinc data
-    static bool stringIsJSON(const std::string& data);
-  };
-  
-}
+class JSONParser {
+protected:
+  enum TokenT {
+    T_LIST_OPEN,
+    T_LIST_CLOSE,
+    T_OBJ_OPEN,
+    T_OBJ_CLOSE,
+    T_COMMA,
+    T_COLON,
+    T_STRING,
+    T_INT,
+    T_FLOAT,
+    T_BOOL,
+    T_NULL,
+    T_EOF
+  } _t;
+
+  class Token;
+  EnvI& _env;
+  int _line;
+  int _column;
+  std::string _filename;
+  /// Map from type alias name to the aliased TypeInst, populated in parseModel
+  ASTStringMap<TypeInst*> _aliases;
+  /// If \a ti's domain references a known type alias, return a fresh TypeInst that
+  /// merges the alias's base type/domain with \a ti's ranges. Follows alias chains.
+  /// Returns \a ti unchanged when no alias applies.
+  TypeInst* resolveAlias(TypeInst* ti);
+  Location errLocation() const;
+  Token readToken(std::istream& is);
+  Token readTokenInternal(std::istream& is);
+  void expectToken(std::istream& is, TokenT t);
+  std::string expectString(std::istream& is);
+  int expectInt(std::istream& is);
+  void expectEof(std::istream& is);
+  Expression* parseEnumDef(std::istream& is);
+  Expression* parseEnumConstructorDef(std::istream& is, const std::string& seen);
+  Expression* parseEnum(std::istream& is);
+  Expression* parseEnumObject(std::istream& is, const std::string& seen);
+  Expression* parseExp(std::istream& is, bool parseObjects = true, TypeInst* ti = nullptr);
+  Expression* parseArray(std::istream& is, TypeInst* ti = nullptr, size_t range_index = 0);
+  Expression* parseSet(std::istream& is, TypeInst* ti = nullptr);
+  Expression* parseObject(std::istream& is, TypeInst* ti = nullptr);
+
+  void parseModel(Model* m, std::istream& is, bool isData);
+
+public:
+  JSONParser(EnvI& env) : _env(env) {}
+  /// Parses \a filename as MiniZinc data and creates assign items in \a m
+  void parse(Model* m, const std::string& filename, bool isData = true);
+  /// Parses \a data as JSON-encoded MiniZinc data and creates assign items in \a m
+  void parseFromString(Model* m, const std::string& data, bool isData = true);
+  /// Check if file \a filename may contain JSON-encoded MiniZinc data
+  static bool fileIsJSON(const std::string& filename);
+  /// Check if string \a data may contain JSON-encoded MiniZinc data
+  static bool stringIsJSON(const std::string& data);
+  /// Coerces a array literal to take shape and (tuple) type
+  Expression* coerceArray(TypeInst* intendedTI, ArrayLit* al);
+};
+
+}  // namespace MiniZinc

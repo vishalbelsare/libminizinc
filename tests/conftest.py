@@ -9,15 +9,19 @@ from html import escape
 import pytest_html
 import re
 import minizinc as mzn
-import datetime
-from minizinc.helpers import check_solution
 from difflib import HtmlDiff
-import warnings
 import sys
 
 
-def pytest_configure():
+def pytest_configure(config):
     pytest.solver_cache = {}
+    search = config.getoption("--driver")
+    if search is not None:
+        driver = mzn.Driver.find([search])
+        if driver is None:
+            raise Exception("Failed to find MiniZinc driver in {}".format(search))
+        driver.make_default()
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -36,11 +40,17 @@ def pytest_addoption(parser):
     parser.addoption(
         "--all-suites", action="store_true", dest="feature", help="Run all test suites"
     )
+    parser.addoption(
+        "--driver",
+        action="store",
+        metavar="MINIZINC",
+        help="Directory containing MiniZinc executable",
+    )
 
 
-def pytest_collect_file(parent, path):
-    if path.ext == ".mzn":
-        return MznFile(path, parent)
+def pytest_collect_file(parent, file_path):
+    if file_path.suffix == ".mzn":
+        return MznFile.from_parent(parent, path=file_path)
 
 
 def pytest_html_results_table_header(cells):
@@ -52,8 +62,8 @@ def pytest_html_results_table_header(cells):
 def pytest_html_results_table_row(report, cells):
     if hasattr(report, "user_properties"):
         props = {k: v for k, v in report.user_properties}
-        cells.insert(2, html.td(props["solver"]))
-        cells.insert(3, html.td(props["checker"] if "checker" in props else "-"))
+        cells.insert(2, html.td(props.get("solver", "-")))
+        cells.insert(3, html.td(props.get("checker", "-")))
     cells.pop()
 
 
@@ -121,7 +131,9 @@ class MznFile(pytest.File):
                 tests = [doc for doc in yaml.load_all(yaml_comment.group(1))]
 
                 for suite_name, suite in suites.items():
-                    if any(self.fspath.fnmatch(glob) for glob in suite.includes):
+                    if any(
+                        self.fspath.fnmatch(glob) for glob in suite.includes
+                    ) and not any(self.fspath.fnmatch(glob) for glob in suite.excludes):
                         for i, spec in enumerate(tests):
                             for solver in spec.solvers:
                                 base = (
@@ -129,24 +141,24 @@ class MznFile(pytest.File):
                                 )
                                 name = "{}.{}.{}".format(suite_name, base, solver)
                                 cache = CachedResult()
-                                yield SolveItem(
-                                    name,
+                                yield SolveItem.from_parent(
                                     self,
-                                    spec,
-                                    solver,
-                                    cache,
-                                    spec.markers,
-                                    suite,
+                                    name=name,
+                                    spec=spec,
+                                    solver=solver,
+                                    cache=cache,
+                                    markers=spec.markers,
+                                    suite=suite,
                                 )
                                 for checker in spec.check_against:
-                                    yield CheckItem(
-                                        "{}:{}".format(name, checker),
+                                    yield CheckItem.from_parent(
                                         self,
-                                        cache,
-                                        solver,
-                                        checker,
-                                        spec.markers,
-                                        suite,
+                                        name="{}:{}".format(name, checker),
+                                        cache=cache,
+                                        solver=solver,
+                                        checker=checker,
+                                        markers=spec.markers,
+                                        suite=suite,
                                     )
 
 
@@ -158,10 +170,13 @@ class MznItem(pytest.Item):
             self.add_marker(marker)
 
         if self.config.getoption("--solvers") is not None:
-            self.allowed = [
-                x.strip() for x in self.config.getoption("--solvers").split(",")
-            ]
-            self.allowed = [x for x in self.allowed if x in suite.solvers]
+            solvers_option = self.config.getoption("--solvers").split(",")
+            if suite.solvers is None:
+                self.allowed = solvers_option
+            else:
+                self.allowed = list(
+                    set(suite.solvers).intersection(set(solvers_option))
+                )
         else:
             self.allowed = suite.solvers
 
@@ -177,6 +192,8 @@ class MznItem(pytest.Item):
         return self.allowed is None or solver in self.allowed
 
     def solver_exists(self, solver):
+        if solver.endswith(".msc"):
+            return True
         solver_exists = pytest.solver_cache.get(solver, None)
         if solver_exists is None:
             try:
@@ -243,9 +260,7 @@ class SolveItem(MznItem):
 
 
 class CheckItem(MznItem):
-    def __init__(
-        self, name, parent, cache, solver, checker, markers, suite
-    ):
+    def __init__(self, name, parent, cache, solver, checker, markers, suite):
         super().__init__(name, parent, solver, markers, suite)
         if not self.solver_allowed(checker):
             self.add_marker(

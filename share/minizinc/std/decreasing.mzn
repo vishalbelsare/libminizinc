@@ -1,20 +1,13 @@
-include "decreasing_bool.mzn";
-include "decreasing_float.mzn";
-include "decreasing_int.mzn";
-include "decreasing_set.mzn";
+include "increasing.mzn";
 
-/** @group globals.sort Requires that the array \a x is in decreasing order (duplicates are allowed). */
-predicate decreasing(array[int] of var bool: x) =
-    decreasing_bool(x);
+/** @group globals.sort Requires that the array \a xs is in decreasing order (duplicates are allowed). */
+predicate decreasing(array [$X] of var bool: xs) = increasing(reverse(array1d(xs)));
 
-/** @group globals.sort Requires that the array \a x is in decreasing order (duplicates are allowed). */
-predicate decreasing(array[int] of var float: x) =
-    decreasing_float(x);
+/** @group globals.sort Requires that the array \a xs is in decreasing order (duplicates are allowed). */
+predicate decreasing(array [$X] of var opt float: xs) = increasing(reverse(array1d(xs)));
 
-/** @group globals.sort Requires that the array \a x is in decreasing order (duplicates are allowed). */
-predicate decreasing(array[int] of var int: x) =
-    decreasing_int(x);
+/** @group globals.sort Requires that the array \a xs is in decreasing order (duplicates are allowed). */
+predicate decreasing(array [$X] of var opt $$E: xs) = increasing(reverse(array1d(xs)));
 
-/** @group globals.sort Requires that the array \a x is in decreasing order (duplicates are allowed). */
-predicate decreasing(array[int] of var set of int: x) =
-    decreasing_set(x);
+/** @group globals.sort Requires that the array \a xs is in decreasing order (duplicates are allowed). */
+predicate decreasing(array [$X] of var set of $$E: xs) = increasing(reverse(array1d(xs)));

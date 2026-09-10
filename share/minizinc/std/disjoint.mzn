@@ -1,6 +1,8 @@
 include "fzn_disjoint.mzn";
 include "fzn_disjoint_reif.mzn";
 
-/** @group globals Requires that sets \a s1 and \a s2 do not intersect. */
-predicate disjoint(var set of int: s1, var set of int: s2) =
-    fzn_disjoint(s1,s2);
+predicate fzn_disjoint(var set of int: s, var set of int: t);
+
+/** @group globals.set Requires that sets \a s and \a t do not intersect. */
+predicate disjoint(var set of $$E: s, var set of $$E: t) =
+  fzn_disjoint(enum2int(s), enum2int(t));

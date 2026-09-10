@@ -12,59 +12,135 @@
 #pragma once
 
 #include <exception>
-
+#include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace MiniZinc {
 
-  class Exception : public std::exception {
-  protected:
-    std::string _msg;
-  public:
-    Exception(const std::string& msg) : _msg(msg) {}
-    virtual ~Exception(void) throw() {}
-    virtual const char* what(void) const throw()  = 0;
-    const std::string& msg(void) const { return _msg; }
-  };
-  
-  class ParseException : public Exception {
-  public:
-    ParseException(const std::string& msg) : Exception(msg) {}
-    ~ParseException(void) throw() {}
-    virtual const char* what(void) const throw() { return ""; }
-  };
-  
-  class InternalError : public Exception {
-  public:
-    InternalError(const std::string& msg) : Exception(msg) {}
-    ~InternalError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: internal error";
-    }
-  };
+class SignalRaised : public std::exception {
+protected:
+  int _signal;
 
-  class Error : public Exception {
-  public:
-    Error(const std::string& msg) : Exception(msg) {}
-    ~Error(void) throw() {}
-    virtual const char* what(void) const throw() { return ""; }
-  };
-  
-  class Timeout : public Exception {
-  public:
-    Timeout(void) : Exception("time limit reached") {}
-    ~Timeout(void) throw() {}
-    virtual const char* what(void) const throw() { return "MiniZinc: time out"; }
-  };
-  
-  class ArithmeticError : public Exception {
-  public:
-    ArithmeticError(const std::string& msg)
-    : Exception(msg) {}
-    virtual ~ArithmeticError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: arithmetic error";
+public:
+  SignalRaised(int signal) : _signal(signal) {}
+  ~SignalRaised() throw() override {}
+  const char* what() const throw() override { return "signal raised"; }
+  int signal() const { return _signal; }
+  /// Re-raise this signal
+  void raise() const;
+};
+
+class Exception : public std::exception {
+protected:
+  std::shared_ptr<const std::string> _msg;
+
+  void setMsg(std::string msg) { _msg = std::make_shared<const std::string>(std::move(msg)); }
+
+public:
+  Exception(std::string msg) { setMsg(std::move(msg)); }
+  Exception(const Exception&) noexcept = default;
+  Exception& operator=(const Exception&) noexcept = default;
+  ~Exception() throw() override {}
+  const char* what() const throw() override = 0;
+  const std::string& msg() const { return *_msg; }
+  /// Print human-readable error message
+  virtual void print(std::ostream& os) const;
+  /// Print JSON stream formatted error message
+  virtual void json(std::ostream& os) const;
+};
+
+class InternalError : public Exception {
+public:
+  InternalError(const std::string& msg) : Exception(msg) {}
+  ~InternalError() throw() override {}
+  const char* what() const throw() override { return "internal error"; }
+  void print(std::ostream& os) const override;
+};
+
+class Error : public Exception {
+public:
+  Error(const std::string& msg) : Exception(msg) {}
+  ~Error() throw() override {}
+  const char* what() const throw() override { return "error"; }
+};
+
+class Timeout : public Exception {
+public:
+  Timeout() : Exception("time limit reached") {}
+  ~Timeout() throw() override {}
+  const char* what() const throw() override { return "time out"; }
+};
+
+class BadOption : public Exception {
+protected:
+  std::shared_ptr<const std::string> _usage;
+
+public:
+  BadOption(const std::string& msg = "") : Exception(msg) {}
+  ~BadOption() throw() override {}
+  const char* what() const throw() override { return "argument parsing error"; }
+  void print(std::ostream& os) const override;
+
+  void usage(const std::string& usage) { _usage = std::make_shared<const std::string>(usage); }
+  const std::string& usage() const {
+    static const std::string empty;
+    return _usage == nullptr ? empty : *_usage;
+  }
+};
+
+class ArithmeticError : public Exception {
+public:
+  ArithmeticError(const std::string& msg) : Exception(msg) {}
+  ~ArithmeticError() throw() override {}
+  const char* what() const throw() override { return "arithmetic error"; }
+};
+
+/// Allows throwing multiple errors at once
+/// e.g. for SyntaxError and TypeError.
+template <class T>
+class MultipleErrors : public Exception {
+protected:
+  std::shared_ptr<const std::vector<T>> _errors;
+
+public:
+  MultipleErrors(std::vector<T> errors)
+      : Exception(""), _errors(std::make_shared<const std::vector<T>>(std::move(errors))) {}
+  ~MultipleErrors() throw() override {}
+  const char* what() const throw() override { return "multiple errors"; }
+
+  void print(std::ostream& os) const override {
+    if (_errors->size() > 1) {
+      os << "Multiple " << (*_errors)[0].what() << "s:\n";
     }
-  };
-  
-}
+    bool first = true;
+    for (const auto& error : *_errors) {
+      if (first) {
+        first = false;
+      } else {
+        os << "\n";
+      }
+      error.print(os);
+    }
+  }
+
+  void json(std::ostream& os) const override {
+    for (const auto& error : *_errors) {
+      error.json(os);
+    }
+  }
+};
+
+class PluginError : public Exception {
+public:
+  /// Construct with message \a msg
+  PluginError(const std::string& msg) : Exception(msg) {}
+  /// Destructor
+  ~PluginError() throw() override {}
+  /// Return description
+  const char* what() const throw() override { return "plugin loading error"; }
+};
+
+}  // namespace MiniZinc

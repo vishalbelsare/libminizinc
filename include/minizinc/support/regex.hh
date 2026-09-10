@@ -11,18 +11,23 @@
 
 #pragma once
 
+// Regex Parser Requirements
+#include <minizinc/astmap.hh>
+#include <minizinc/aststring.hh>
+#include <minizinc/config.hh>
+#include <minizinc/values.hh>
+
+#include <memory>
+#include <set>
+
 #ifdef HAS_GECODE
 
-// Regex Parser Requirements
-#include <memory>
-#include <unordered_map>
-#include <set>
 #include <gecode/minimodel.hh>
-#include <minizinc/values.hh>
+#undef ERROR
 
 // This is a workaround for a bug in flex that only shows up
 // with the Microsoft C++ compiler
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 #define YY_NO_UNISTD_H
 #ifdef __cplusplus
 extern "C" int isatty(int);
@@ -31,12 +36,12 @@ extern "C" int isatty(int);
 
 // The Microsoft C++ compiler marks certain functions as deprecated,
 // so let's take the alternative definitions
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 #define strdup _strdup
 #define fileno _fileno
 #endif
 
-//Anonymous struct for when yyparse is exported
+// Anonymous struct for when yyparse is exported
 typedef struct REContext REContext;
 // Parser generated header
 #include <minizinc/support/regex_parser.tab.hh>
@@ -45,6 +50,6 @@ using namespace Gecode;
 using namespace MiniZinc;
 
 // Parsing function
-std::unique_ptr<REG> regex_from_string(const std::string& expression, const IntSetVal& domain, const std::unordered_map<std::string, int>& identifiers);
+std::unique_ptr<REG> regex_from_string(const std::string& regex_str, const IntSetVal& domain);
 
-#endif //HAS_GECODE
+#endif  // HAS_GECODE

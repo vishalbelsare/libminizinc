@@ -9,151 +9,303 @@
 
 #pragma once
 
-#include <minizinc/solvers/MIP/MIP_wrap.hh>
-#include <minizinc/solver_instance_base.hh>
 #include <minizinc/plugin.hh>
+#include <minizinc/solver_config.hh>
+#include <minizinc/solver_instance_base.hh>
+#include <minizinc/solvers/MIP/MIP_wrap.hh>
 
-#include <xprb.h>
-#include <xprs.h>
+#include <memory>
+
+#include <minizinc/_thirdparty/xpress_interface.h>
 
 using namespace std;
 
-/// xprs.dll depends on this library
-class XprlPlugin : MiniZinc::Plugin {
-public:
-  XprlPlugin();
-  XprlPlugin(const std::string& dll);
-private:
-  static const std::vector<std::string>& dlls(void);
-};
+// Callback payloads (defined in MIP_xpress_wrap.cpp); held by unique_ptr members below so
+// they outlive the solve and are freed with the wrapper rather than leaked.
+struct UserSolutionCallbackData;
+struct UserCutCallbackData;
 
-class XpressPlugin : MiniZinc::Plugin {
+class XpressPlugin {
 public:
   XpressPlugin();
   XpressPlugin(const std::string& dll);
-  int (XPRS_CC *XPRSinit)(const char* path);
-  int (XPRS_CC *XPRSfree)(void);
-  int (XB_CC *XPRSgetversion)(char* version);
-  int (XPRS_CC *XPRSgetlicerrmsg)(char *buffer, int length);
-  struct xo_prob_struct* (XB_CC* XPRBgetXPRSprob)(struct Xbprob *  prob);
-  int (XB_CC *XPRBsetmsglevel)(struct Xbprob * prob, int level);
-  int (XPRS_CC *XPRSsetlogfile)(XPRSprob prob, const char* logname);
-  int (XPRS_CC *XPRSsetintcontrol)(XPRSprob prob, int _index, int _ivalue);
-  int (XPRS_CC *XPRSsetdblcontrol)(XPRSprob prob, int _index, double _dvalue);
-  double (XB_CC *XPRBgetsol)(struct Xbvar * var);
-  int (XPRS_CC *XPRSgetintattrib)(XPRSprob prob, int _index, int* _ivalue);
-  int (XPRS_CC *XPRSgetdblattrib)(XPRSprob prob, int _index, double* _dvalue);
-  int (XB_CC *XPRBbegincb)(struct Xbprob * prob, struct xo_prob_struct* optprob);
-  int (XB_CC *XPRBsync)(struct Xbprob * prob, int synctype);
-  int (XB_CC *XPRBendcb)(struct Xbprob * prob);
-  int (XB_CC *XPRBsetterm)(struct Xbctr * lct, struct Xbvar * var, double coeff);
-  struct Xbvar* (XB_CC *XPRBnewvar)(struct Xbprob * prob, int type, const char *name, double bdl, double bdu);
-  struct Xbctr* (XB_CC *XPRBnewctr)(struct Xbprob * prob, const char *name, int qrtype);
-  int (XB_CC *XPRBsetctrtype)(struct Xbctr * lct, int qrtype);
-  int (XB_CC *XPRBexportprob)(struct Xbprob * prob, int format, const char *filename);
-  int (XB_CC *XPRBgetbounds)(struct Xbvar * var, double *lbd, double *ubd);
-  int (XB_CC *XPRBsetobj)(struct Xbprob * prob, struct Xbctr * ctr);
-  int (XB_CC *XPRBmipoptimize)(struct Xbprob * prob, const char *alg);
-  int (XB_CC *XPRBsetsense)(struct Xbprob * prob, int dir);
-  int (XPRS_CC *XPRSsetcbintsol)(XPRSprob prob, void (XPRS_CC *f_intsol)(XPRSprob prob, void* vContext), void* p);
-  int (XB_CC *XPRBsetub)(struct Xbvar * var, double c);
-  int (XB_CC *XPRBsetlb)(struct Xbvar * var, double c);
-  int (XB_CC *XPRBsetindicator)(struct Xbctr * lct, int dir, struct Xbvar * var);
-  struct Xbsol* (XB_CC *XPRBnewsol)(struct Xbprob * prob);
-  int (XB_CC *XPRBsetsolvar)(struct Xbsol * sol, struct Xbvar * var, double coeff);
-  int (XB_CC *XPRBaddmipsol)(struct Xbprob * prob, struct Xbsol * sol, const char *name);
-  struct Xbprob* (XB_CC *XPRBnewprob)(const char *name);
-  int (XB_CC *XPRBdelprob)(struct Xbprob *  prob);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSinit)(const char* path);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSfree)();
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XB_CC* XPRSgetversion)(char* version);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetlicerrmsg)(char* buffer, int length);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRScreateprob)(XPRSprob* p_prob);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSdestroyprob)(XPRSprob prob);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSloadlp)(XPRSprob prob, const char* probname, int ncols, int nrows,
+                           const char rowtype[], const double rhs[], const double rng[],
+                           const double objcoef[], const int start[], const int collen[],
+                           const int rowind[], const double rowcoef[], const double lb[],
+                           const double ub[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSloadmip)(XPRSprob prob, const char* probname, int ncols, int nrows,
+                            const char rowtype[], const double rhs[], const double rng[],
+                            const double objcoef[], const int start[], const int collen[],
+                            const int rowind[], const double rowcoef[], const double lb[],
+                            const double ub[], int nentities, int nsets, const char coltype[],
+                            const int entind[], const double limit[], const char settype[],
+                            const int setstart[], const int setind[], const double refval[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddrows)(XPRSprob prob, int nrows, int ncoefs, const char rowtype[],
+                            const double rhs[], const double rng[], const int start[],
+                            const int colind[], const double rowcoef[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddcols)(XPRSprob prob, int ncols, int ncoefs, const double objcoef[],
+                            const int start[], const int rowind[], const double rowcoef[],
+                            const double lb[], const double ub[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSoptimize)(XPRSprob prob, const char* flags, int* solution_status,
+                             int* objective_status);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetsolution)(XPRSprob prob, int* status, double x[], int first, int last);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSchgobjsense)(XPRSprob prob, int objsense);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSchgbounds)(XPRSprob prob, int nbounds, const int colind[], const char bndtype[],
+                              const double bndval[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSchgcoltype)(XPRSprob prob, int ncols, const int colind[], const char coltype[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSwriteprob)(XPRSprob prob, const char* filename, const char* flags);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetlogfile)(XPRSprob prob, const char* logname);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetintcontrol)(XPRSprob prob, int index, int ivalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetdblcontrol)(XPRSprob prob, int index, double dvalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetintattrib)(XPRSprob prob, int index, int* ivalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetdblattrib)(XPRSprob prob, int index, double* dvalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetlasterror)(XPRSprob prob, char* errmsg);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddcbintsol)(XPRSprob prob,
+                                void(XPRS_CC* f_intsol)(XPRSprob prob, void* vContext), void* p,
+                                int priority);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddcbmessage)(XPRSprob prob,
+                                 void(XPRS_CC* f_message)(XPRSprob prob, void* vContext,
+                                                          const char* msg, int len, int msgtype),
+                                 void* p, int priority);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSremovecbintsol)(XPRSprob prob,
+                                   void(XPRS_CC* f_intsol)(XPRSprob prob, void* vContext), void* p);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSremovecbmessage)(XPRSprob prob,
+                                    void(XPRS_CC* f_message)(XPRSprob prob, void* vContext,
+                                                             const char* msg, int len, int msgtype),
+                                    void* p);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetcontrolinfo)(XPRSprob prob, const char* sCaName, int* iHeaderId,
+                                   int* iTypeinfo);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetintcontrol)(XPRSprob prob, int index, int* ivalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetintcontrol64)(XPRSprob prob, int index, XPRSint64* ivalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetdblcontrol)(XPRSprob prob, int index, double* dvalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetintcontrol64)(XPRSprob prob, int index, XPRSint64 ivalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetstringcontrol)(XPRSprob prob, int index, char* svalue, int svaluesize,
+                                     int* controlsize);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetstrcontrol)(XPRSprob prob, int index, const char* svalue);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddmipsol)(XPRSprob prob, int ilength, const double mipsolval[],
+                              const int mipsolcol[], const char* solname);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddindicators)(XPRSprob prob, int nrows, const int rowind[], const int colind[],
+                                  const int complement[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSchgqrowcoeff)(XPRSprob prob, int row, int rowqcol1, int rowqcol2,
+                                 double rowqcoef);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSloaddelayedrows)(XPRSprob prob, int nrows, const int rowind[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSchgobjn)(XPRSprob prob, int objidx, int ncols, const int colind[],
+                            const double objcoef[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetobjintcontrol)(XPRSprob prob, int objidx, int control, int value);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsetobjdblcontrol)(XPRSprob prob, int objidx, int control, double value);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddcbcutround)(XPRSprob prob,
+                                  void(XPRS_CC* f_cutround)(XPRSprob cbprob, void* cbdata,
+                                                            int ifxpresscuts, int* p_action),
+                                  void* data, int priority);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSremovecbcutround)(XPRSprob prob,
+                                     void(XPRS_CC* f_cutround)(XPRSprob cbprob, void* cbdata,
+                                                               int ifxpresscuts, int* p_action),
+                                     void* data);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSgetcallbacksolution)(XPRSprob prob, int* p_available, double x[], int first,
+                                        int last);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSaddmanagedcuts)(XPRSprob prob, int globalvalid, int ncuts, const char rowtype[],
+                                   const double rhs[], const int start[], const int colind[],
+                                   const double cutcoef[]);
+  // NOLINTNEXTLINE(readability-identifier-naming)
+  int(XPRS_CC* XPRSsaveas)(XPRSprob prob, const char* filename);
+
+  const std::string& path() const { return _inner.path(); }
+
 private:
-  void load_dll(void);
-  static const std::vector<std::string>& dlls(void);
+  MiniZinc::Plugin _inner;
+  void loadDll();
+  static const std::vector<std::string>& dlls();
 };
 
-class MIP_xpress_wrapper : public MIP_wrapper {
+class MIPxpressWrapper : public MIPWrapper {
 public:
-    class Options : public MiniZinc::SolverInstanceBase::Options {
-    public:
-      int msgLevel = 0;
-      int timeout = 0;
-      int numSolutions = 0;
-      std::string logFile = "";
-      std::string writeModelFile = "";
-      std::string writeModelFormat = "lp";
-      double absGap = 0;
-      double relGap = 0.0001;
-      bool printAllSolutions = false;
-      bool processOption(int& i, std::vector<std::string>& argv);
-      std::string xprsPassword;
-      std::string xprsRoot;
-      static void printHelp(std::ostream& );
-    };
-  private:
-    Options* options=nullptr;
-    XprlPlugin* plugin_dep = nullptr;
-    XpressPlugin* plugin = nullptr;
+  class FactoryOptions {
   public:
+    bool processOption(int& i, std::vector<std::string>& argv, const std::string& workingDir);
 
-public:
-  virtual void doAddVars(size_t n, double *obj, double *lb, double *ub,
-                         VarType *vt, string *names);
-  virtual void addRow(int nnz, int *rmatind, double *rmatval, LinConType sense,
-                      double rhs, int mask = MaskConsType_Normal,
-                      string rowName = "");
-  virtual void setObjSense(int s);
-  virtual void solve();
-  virtual void setVarLB(int iVar, double lb);
-  virtual void setVarUB(int iVar, double ub);
-  virtual void setVarBounds(int iVar, double lb, double ub);
-  virtual void addIndicatorConstraint(int iBVar, int bVal, int nnz,
-                                      int *rmatind, double *rmatval,
-                                      LinConType sense, double rhs,
-                                      std::string rowName = "");
-  virtual bool addWarmStart(const std::vector<VarId> &vars,
-                            const std::vector<double> vals);
-
-  virtual int getNCols() {return variables.size();}
-  virtual int getNRows() {return nRows;}
-  virtual double getInfBound() { return XPRB_INFINITY; }
-  virtual const double *getValues() { return output.x; }
-  virtual double getObjValue() { return output.objVal; }
-  virtual double getBestBound() { return output.bestBound; }
-  virtual double getCPUTime() { return output.dCPUTime; }
-  virtual Status getStatus() { return output.status; }
-  virtual string getStatusName() { return output.statusName; }
-  virtual int getNNodes() { return output.nNodes; }
-  virtual int getNOpen() { return output.nOpenNodes; }
-
-  MIP_xpress_wrapper(Options* opt) : options(opt) {
-    openXpress();
-  };
-  virtual ~MIP_xpress_wrapper() {
-    closeXpress();
+    std::string xpressDll;
+    std::string xprsPassword;
   };
 
-  static std::string getDescription(MiniZinc::SolverInstanceBase::Options* opt=NULL);
-  static std::string getVersion(MiniZinc::SolverInstanceBase::Options* opt=NULL);
-  static std::string getId(void);
-  static std::string getName(void);
-  static std::vector<std::string> getTags(void);
-  static std::vector<std::string> getStdFlags(void);
-  static std::vector<std::string> getRequiredFlags(void);
+  class Options : public MiniZinc::SolverInstanceBase::Options {
+  public:
+    int msgLevel = 0;
+    int nTimeout = -1;
+    int numSolutions = 0;
+    std::string logFile;
+    std::string writeModelFile;
+    std::string writeModelFormat = "lp";
+    double absGap = 0;
+    double relGap = 0.0001;
+    bool intermediateSolutions = false;
+
+    int numThreads = 0;
+    int randomSeed = 0;
+
+    std::unordered_map<std::string, std::string> extraParams;
+
+    bool processOption(int& i, std::vector<std::string>& argv,
+                       const std::string& workingDir = std::string());
+    static void printHelp(std::ostream& os);
+  };
 
 private:
-  XPRBprob problem;
-  XPRBctr xpressObj;
-  vector<XPRBvar> variables;
-  size_t nRows{0};
+  FactoryOptions& _factoryOptions;
+  Options* _options = nullptr;
+  XpressPlugin* _plugin = nullptr;
 
-  void openXpress(void);
-  void closeXpress(void);
+public:
+  void doAddVars(size_t n, double* obj, double* lb, double* ub, VarType* vt,
+                 string* names) override;
+  void addRow(int nnz, int* rmatind, double* rmatval, LinConType sense, double rhs,
+              int mask = MaskConsType_Normal, const string& rowName = "") override;
+  void setObjSense(int s) override;
+  void solve() override;
+  void setVarLB(int iVar, double lb) override;
+  void setVarUB(int iVar, double ub) override;
+  void setVarBounds(int iVar, double lb, double ub) override;
+  void addIndicatorConstraint(int iBVar, int bVal, int nnz, int* rmatind, double* rmatval,
+                              LinConType sense, double rhs,
+                              const std::string& rowName = "") override;
+  bool addWarmStart(const std::vector<VarId>& vars, const std::vector<double>& vals) override;
+  void addTimes(int x, int y, int z, const std::string& rowName = "") override;
+  bool defineMultipleObjectives(const MultipleObjectives& mo) override;
+
+  int getNCols() override { return static_cast<int>(_nCols); }
+  int getNRows() override { return static_cast<int>(_nRows); }
+  double getInfBound() override { return XPRS_PLUSINFINITY; }
+
+  // Constructor and destructor are defined out-of-line in MIP_xpress_wrap.cpp because the
+  // unique_ptr callback-payload members need the complete struct types to be
+  // constructed/destroyed (they are only forward-declared here).
+  MIPxpressWrapper(FactoryOptions& factoryOpt, Options* opt);
+  ~MIPxpressWrapper() override;
+
+  static std::string getDescription(FactoryOptions& factoryOpt,
+                                    MiniZinc::SolverInstanceBase::Options* opt = nullptr);
+  static std::string getVersion(FactoryOptions& factoryOpt,
+                                MiniZinc::SolverInstanceBase::Options* opt = nullptr);
+  static std::string getId();
+  static std::string getName();
+  static std::vector<std::string> getTags();
+  static std::vector<std::string> getStdFlags();
+  static std::vector<std::string> getRequiredFlags(FactoryOptions& factoryOpt);
+  static std::vector<std::string> getFactoryFlags();
+
+  static std::vector<MiniZinc::SolverConfig::ExtraFlag> getExtraFlags(FactoryOptions& factoryOpt);
+
+private:
+  XPRSprob _problem{nullptr};
+
+  // Solution storage:
+  std::vector<double> _x;  // Solution values
+
+  // Problem data (batch mode for C API):
+  std::vector<double> _obj;  // Objective coefficients
+  std::vector<double> _lb;   // Variable lower bounds
+  std::vector<double> _ub;   // Variable upper bounds
+  std::vector<char> _vtype;  // Variable types ('C', 'B', 'I')
+
+  // Constraint data:
+  std::vector<char> _rowtype;    // 'L', 'E', 'G'
+  std::vector<double> _rhs;      // RHS values
+  std::vector<double> _rng;      // Range values (for ranged constraints)
+  std::vector<int> _start;       // Start indices for constraint coefficients
+  std::vector<int> _rowind;      // Column indices in constraints
+  std::vector<double> _rowcoef;  // Coefficient values
+
+  // Indicator constraint data:
+  std::vector<int> _indicatorRows;         // Row indices for indicator constraints
+  std::vector<int> _indicatorVars;         // Binary variable indices
+  std::vector<int> _indicatorComplements;  // Complement flags
+
+  // Bilinear term data (for constraints like z = x*y, implemented via XPRSchgqrowcoeff):
+  struct BilinearTerm {
+    int row;      // Row index where constraint is added
+    int x, y, z;  // Variables: z = x * y
+  };
+  std::vector<BilinearTerm> _bilinearTerms;
+
+  // Delayed (lazy) row indices - flushed via XPRSloaddelayedrows in loadProblem()
+  std::vector<int> _delayedRowIdx;
+
+  // Multiple-objective definitions - buffered here, flushed in loadProblem() after columns exist
+  struct MultiObjTerm {
+    double weight;  // Objective weight (sign encodes goal direction: -1 min, +1 max)
+    int col;        // Objective variable column index
+    int priority;   // Objective priority (higher solved first)
+  };
+  std::vector<MultiObjTerm> _multiObj;
+
+  // Callback payloads registered with Xpress in solve(); owned here so they remain valid
+  // for the whole solve and are freed when the wrapper is destroyed.
+  std::unique_ptr<UserSolutionCallbackData> _solCbData;
+  std::unique_ptr<UserCutCallbackData> _cutCbData;
+
+  size_t _nCols{0};
+  size_t _nRows{0};
+  int _objsense{-1};  // Objective sense: XPRS_OBJ_MINIMIZE (-1) or XPRS_OBJ_MAXIMIZE (1)
+  bool _problemLoaded{false};
+
+  void openXpress();
+  void closeXpress();
+
+  void checkDLL();
 
   void setUserSolutionCallback();
+  void setUserCutCallback();
   void setOptions();
   void writeModelIfRequested();
-  int convertConstraintType(LinConType sense);
-  int convertVariableType(VarType varType);
-  int convertObjectiveSense(int s);
-  XPRBctr addConstraint(int nnz, int *rmatind, double *rmatval,
-                        LinConType sense, double rhs, int mask, string rowName);
-  void addDummyConstraint();
+  void loadProblem();
 };

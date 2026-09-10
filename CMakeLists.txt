@@ -1,11 +1,9 @@
-cmake_minimum_required(VERSION 3.4.0)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "Minimum OS X deployment version") # Must be before project()
-
+cmake_minimum_required(VERSION 3.5.0)
 # -------------------------------------------------------------------------------------------------------------------
 #  -- Project information and versioning.
 
 project(libminizinc
-        VERSION 2.4.3
+        VERSION 2.10.2
         LANGUAGES CXX C)
 
 if(NOT BUILD_REF)
@@ -15,25 +13,12 @@ endif()
 # -------------------------------------------------------------------------------------------------------------------
 #  -- Project build options
 
-# Driver compilation selection
-option(USE_CPLEX "Enable the CPLEX solving target" TRUE)
-option(USE_GEAS "Enable the Geas solving target" TRUE)
-option(USE_GECODE "Enable the Gecode solving target" TRUE)
-option(USE_GUROBI "Enable the Gurobi solving target" TRUE)
-option(USE_OSICBC "Enable the Osi CBC solving target" TRUE)
-option(USE_SCIP "Enable the SCIP solving target" TRUE)
-option(USE_XPRESS "Enable the Xpress solving target" TRUE)
-
 # Static vs. Dynamic linking
 option(CPLEX_PLUGIN "Build CPLEX binding as a plugin" ON)
-option(GUROBI_PLUGIN "Build Gurobi binding as a plugin" ON)
+option(HIGHS_PLUGIN "Build HiGHS binding as a plugin" ON)
 
-# Enforce non proprietary build
-option(USE_PROPRIETARY "Enable static linking of proprietary solvers" OFF)
-if(NOT USE_PROPRIETARY)
-  set(CPLEX_PLUGIN ON)
-  set(GUROBI_PLUGIN ON)
-endif()
+# CMake options default value
+option(CMAKE_POSITION_INDEPENDENT_CODE "Default value for POSITION_INDEPENDENT_CODE of targets" TRUE)
 
 # -------------------------------------------------------------------------------------------------------------------
 #  -- CMake initialisation
@@ -45,16 +30,24 @@ include(cmake/support/emscripten_setup.cmake)
 
 # Try to find possible dependencies
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/vendor/highs/lib/cmake/highs)
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/vendor/highs/lib64/cmake/highs)
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/vendor/chuffed/lib/cmake/chuffed)
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/vendor/chuffed/lib64/cmake/chuffed)
 if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif(POLICY CMP0074)
-find_package(CPlex)
 find_package(Geas)
-find_package(Gecode 6.0 COMPONENTS Driver Float Int Kernel Minimodel Search Set Support)
-find_package(Gurobi)
+find_package(Gecode 6.2 COMPONENTS Driver Float Int Kernel Minimodel Search Set Support)
+find_package(atlantis)
+find_package(chuffed)
+if(NOT HIGHS_PLUGIN)
+  find_package(HIGHS REQUIRED)
+endif()
 find_package(OsiCBC)
-find_package(SCIP)
-find_package(Xpress)
+if(NOT CPLEX_PLUGIN)
+	find_package(CPlex REQUIRED)
+endif()
 
 # Set build type when none is selected
 set(DEFAULT_BUILD_TYPE "Release")
@@ -72,7 +65,6 @@ endif()
 # -------------------------------------------------------------------------------------------------------------------
 #  -- Compiler configuration
 
-include(cmake/support/ccache_setup.cmake)
 include(cmake/support/compiler_setup.cmake)
 
 configure_file(
@@ -98,6 +90,7 @@ include(cmake/targets/libmzn.cmake)
 # Executables
 include(cmake/targets/minizinc.cmake)
 include(cmake/targets/mzn2doc.cmake)
+include(cmake/targets/parse_diff.cmake)
 
 # -------------------------------------------------------------------------------------------------------------------
 #  -- Platform Specific configuration
@@ -108,3 +101,7 @@ include(cmake/support/config_emscripten.cmake)
 
 include(cmake/support/config_export.cmake)
 include(cmake/support/config_output.cmake)
+
+# -------------------------------------------------------------------------------------------------------------------
+#  -- Support Actions
+include(cmake/support/format.cmake)

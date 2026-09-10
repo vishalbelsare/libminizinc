@@ -7,10 +7,11 @@
 # User can set Gecode_ROOT to the preferred installation prefix
 
 find_path(GECODE_INCLUDE gecode/kernel.hh
+          HINTS ${PROJECT_SOURCE_DIR}/vendor/gecode
           PATH_SUFFIXES include)
 
 find_file(GECODE_CONFIG_LOC gecode/support/config.hpp
-          HINTS ${GECODE_INCLUDE}
+          HINTS ${GECODE_INCLUDE} ${PROJECT_SOURCE_DIR}/vendor/gecode
           PATH_SUFFIXES include)
 
 if(NOT "${GECODE_CONFIG_LOC}" STREQUAL "GECODE_CONFIG_LOC-NOTFOUND")
@@ -37,8 +38,8 @@ foreach(GECODE_COMP ${GECODE_COMPONENTS})
   string(TOLOWER "gecode${GECODE_COMP}" GECODE_LIB)
   set(GECODE_LIB_LOC "GECODE_LIB_LOC-NOTFOUND")
   find_library(GECODE_LIB_LOC NAMES ${GECODE_LIB} lib${GECODE_LIB} ${GECODE_LIB}-${GECODE_LIBRARY_VERSION}-r-x64 ${GECODE_LIB}-${GECODE_LIBRARY_VERSION}-d-x64
-               HINTS ${GECODE_INCLUDE}
-               PATH_SUFFIXES lib)
+               HINTS ${GECODE_INCLUDE} ${PROJECT_SOURCE_DIR}/vendor/gecode
+               PATH_SUFFIXES lib lib64)
   if(NOT "${GECODE_LIB_LOC}" STREQUAL "GECODE_LIB_LOC-NOTFOUND")
       list(APPEND GECODE_LIBRARY ${GECODE_LIB_LOC})
       add_library(Gecode::${GECODE_COMP} UNKNOWN IMPORTED)
@@ -50,21 +51,21 @@ foreach(GECODE_COMP ${GECODE_COMPONENTS})
   endif()
 endforeach(GECODE_COMP)
 
+if(GECODE_HAS_MPFR)
+  find_package(MPFR)
+  set_target_properties(Gecode::Float PROPERTIES
+                        INTERFACE_LINK_LIBRARIES ${MPFR_LIBRARIES})
+  list(APPEND GECODE_LIBRARY ${MPFR_LIBRARIES})
+  list(APPEND GECODE_TARGETS ${MPFR_LIBRARIES})
+endif()
+
 if(WIN32 AND GECODE_HAS_GIST AND GECODE_STATIC_LIBS)
   find_package(Qt5 QUIET COMPONENTS Core Gui Widgets PrintSupport)
   set_target_properties(Gecode::Gist PROPERTIES
                         INTERFACE_LINK_LIBRARIES "Qt5::Core;Qt5::Gui;Qt5::Widgets;Qt5::PrintSupport")
 endif()
 
-unset(GECODE_REQ_LIBS)
-unset(GECODE_LIB_WIN)
 unset(GECODE_LIB_LOC)
-
-if(GECODE_LIBRARY AND GECODE_HAS_MPFR)
-  find_package(MPFR)
-  list(APPEND GECODE_LIBRARY ${MPFR_LIBRARIES})
-  list(APPEND GECODE_TARGETS ${MPFR_LIBRARIES})
-endif()
 
 include(FindPackageHandleStandardArgs)
 # handle the QUIETLY and REQUIRED arguments and set GECODE_FOUND to TRUE

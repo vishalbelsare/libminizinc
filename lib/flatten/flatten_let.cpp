@@ -12,121 +12,123 @@
 #include <minizinc/flat_exp.hh>
 
 namespace MiniZinc {
-  
-  EE flatten_let(EnvI& env,Ctx ctx, Expression* e, VarDecl* r, VarDecl* b) {
-    CallStackItem _csi(env,e);
-    EE ret;
-    Let* let = e->cast<Let>();
-    GC::mark();
-    std::vector<EE> cs;
-    std::vector<KeepAlive> flatmap;
-    let->pushbindings();
-    for (unsigned int i=0; i<let->let().size(); i++) {
+
+EE flatten_let(EnvI& env, const Ctx& ctx, Expression* e, VarDecl* r, VarDecl* b) {
+  CallStackItem _csi(env, e);
+  EE ret;
+  Let* let = Expression::cast<Let>(e);
+  std::vector<EE> cs;
+  std::vector<KeepAlive> flatmap;
+  {
+    LetPushBindings lpb(let);
+    for (unsigned int i = 0; i < let->let().size(); i++) {
       Expression* le = let->let()[i];
-      if (VarDecl* vd = le->dyn_cast<VarDecl>()) {
-        Expression* let_e = NULL;
-        if (vd->e()) {
+      if (auto* vd = Expression::dynamicCast<VarDecl>(le)) {
+        Expression* let_e = nullptr;
+        if (vd->e() != nullptr) {
           Ctx nctx = ctx;
+          BCtx transfer_ctx = let->type().bt() == Type::BT_INT ? nctx.i : nctx.b;
           nctx.neg = false;
-          if (vd->e()->type().bt()==Type::BT_BOOL)
+          if (Expression::ann(vd).contains(env.constants.ctx.promise_monotone)) {
+            if (Expression::type(vd->e()).bt() == Type::BT_BOOL) {
+              nctx.b = +transfer_ctx;
+            } else {
+              nctx.i = +transfer_ctx;
+            }
+          } else if (Expression::ann(vd).contains(env.constants.ctx.promise_antitone)) {
+            if (Expression::type(vd->e()).bt() == Type::BT_BOOL) {
+              nctx.b = -transfer_ctx;
+            } else {
+              nctx.i = -transfer_ctx;
+            }
+          } else if (Expression::type(vd->e()).isbool()) {
             nctx.b = C_MIX;
-          
-          EE ee = flat_exp(env,nctx,vd->e(),NULL,NULL);
+          }
+
+          CallStackItem csi_vd(env, vd);
+          EE ee = flat_exp(env, nctx, vd->e(), nullptr, nctx.partialityVar(env));
           let_e = ee.r();
           cs.push_back(ee);
-          if (vd->ti()->domain() != NULL) {
+          check_index_sets(env, vd, let_e);
+          if (vd->ti()->domain() != nullptr) {
             GCLock lock;
-            std::vector<Expression*> domargs(2);
-            domargs[0] = ee.r();
-            if (vd->ti()->type().isfloat()) {
-              FloatSetVal* fsv = eval_floatset(env, vd->ti()->domain());
-              if (fsv->size()==1) {
-                domargs[1] = FloatLit::a(fsv->min());
-                domargs.push_back(FloatLit::a(fsv->max()));
-              } else {
-                domargs[1] = vd->ti()->domain();
-              }
-            } else {
-              domargs[1] = vd->ti()->domain();
+            auto* c = mk_domain_constraint(env, ee.r(), vd->ti()->domain());
+            if (c != nullptr) {
+              VarDecl* b_b = (nctx.b == C_ROOT && b == env.constants.varTrue) ? b : nullptr;
+              VarDecl* r_r = (nctx.b == C_ROOT && b == env.constants.varTrue) ? b : nullptr;
+              ee = flat_exp(env, nctx, c, r_r, b_b);
+              cs.push_back(ee);
+              ee.b = ee.r;
+              cs.push_back(ee);
             }
-            Call* c = new Call(vd->ti()->loc().introduce(),"var_dom",domargs);
-            c->type(Type::varbool());
-            c->decl(env.model->matchFn(env,c,false));
-            if (c->decl()==NULL)
-              throw InternalError("no matching declaration found for var_dom");
-            VarDecl* b_b = (nctx.b==C_ROOT && b==constants().var_true) ? b : NULL;
-            VarDecl* r_r = (nctx.b==C_ROOT && b==constants().var_true) ? b : NULL;
-            ee = flat_exp(env, nctx, c, r_r, b_b);
-            cs.push_back(ee);
-            ee.b = ee.r;
-            cs.push_back(ee);
           }
-          if (vd->type().dim() > 0) {
-            checkIndexSets(env, vd, let_e);
-          }
+          vd->e(let_e);
+          flatten_vardecl_annotations(env, vd, nullptr, vd);
         } else {
-          if ((ctx.b==C_NEG || ctx.b==C_MIX) && !vd->ann().contains(constants().ann.promise_total)) {
+          if ((ctx.b == C_NEG || ctx.b == C_MIX) &&
+              !Expression::ann(vd).contains(env.constants.ann.promise_total)) {
             CallStackItem csi_vd(env, vd);
-            throw FlatteningError(env,vd->loc(),
+            throw FlatteningError(env, Expression::loc(vd),
                                   "free variable in non-positive context");
           }
           CallStackItem csi_vd(env, vd);
           GCLock lock;
-          TypeInst* ti = eval_typeinst(env,vd);
-          VarDecl* nvd = newVarDecl(env, ctx, ti, NULL, vd, NULL);
+          TypeInst* ti = eval_typeinst(env, ctx, vd);
+          VarDecl* nvd = new_vardecl(env, ctx, ti, nullptr, vd, nullptr);
           let_e = nvd->id();
+          vd->e(let_e);
         }
-        vd->e(let_e);
-        flatmap.push_back(vd->flat());
-        if (Id* id = Expression::dyn_cast<Id>(let_e)) {
+        flatmap.emplace_back(vd->flat());
+        if (Id* id = Expression::dynamicCast<Id>(let_e)) {
           vd->flat(id->decl());
         } else {
           vd->flat(vd);
         }
       } else {
-        if (ctx.b==C_ROOT || le->ann().contains(constants().ann.promise_total)) {
-          (void) flat_exp(env,Ctx(),le,constants().var_true,constants().var_true);
+        if (ctx.b == C_ROOT || Expression::ann(le).contains(env.constants.ann.promise_total)) {
+          (void)flat_exp(env, Ctx(), le, env.constants.varTrue, env.constants.varTrue);
         } else {
-          EE ee = flat_exp(env,ctx,le,NULL,constants().var_true);
+          Ctx nctx = ctx;
+          nctx.neg = false;
+          EE ee = flat_exp(env, nctx, le, nullptr, env.constants.varTrue);
           ee.b = ee.r;
           cs.push_back(ee);
         }
       }
     }
-    if (r==constants().var_true && ctx.b==C_ROOT && !ctx.neg) {
-      ret.b = bind(env,Ctx(),b,constants().lit_true);
-      (void) flat_exp(env,ctx,let->in(),r,b);
-      ret.r = conj(env,r,Ctx(),cs);
+    if (r == env.constants.varTrue && ctx.b == C_ROOT && !ctx.neg) {
+      ret.b = bind(env, Ctx(), b, env.constants.literalTrue);
+      (void)flat_exp(env, ctx, let->in(), r, b);
+      ret.r = conj(env, r, Ctx(), cs);
     } else {
       Ctx nctx = ctx;
       nctx.neg = false;
       VarDecl* bb = b;
       for (EE& ee : cs) {
-        if (ee.b() != constants().lit_true) {
-          bb = NULL;
+        if (ee.b() != env.constants.literalTrue) {
+          bb = nullptr;
           break;
         }
       }
-      EE ee = flat_exp(env,nctx,let->in(),NULL,bb);
-      if (let->type().isbool() && !let->type().isopt()) {
+      EE ee = flat_exp(env, nctx, let->in(), nullptr, bb);
+      if (let->type().isbool() && !let->type().isOpt()) {
         ee.b = ee.r;
         cs.push_back(ee);
-        ret.r = conj(env,r,ctx,cs);
-        ret.b = bind(env,Ctx(),b,constants().lit_true);
+        ret.r = conj(env, r, ctx, cs);
+        ret.b = bind(env, Ctx(), b, env.constants.literalTrue);
       } else {
         cs.push_back(ee);
-        ret.r = bind(env,Ctx(),r,ee.r());
-        ret.b = conj(env,b,Ctx(),cs);
+        ret.r = bind(env, Ctx(), r, ee.r());
+        ret.b = conj(env, b, Ctx(), cs);
       }
     }
-    let->popbindings();
-    // Restore previous mapping
-    for (unsigned int i=0; i<let->let().size(); i++) {
-      if (VarDecl* vd = let->let()[i]->dyn_cast<VarDecl>()) {
-        vd->flat(Expression::cast<VarDecl>(flatmap.back()()));
-        flatmap.pop_back();
-      }
-    }
-    return ret;
   }
+  // Restore previous mapping
+  for (unsigned int i = 0, j = 0; i < let->let().size(); i++) {
+    if (auto* vd = Expression::dynamicCast<VarDecl>(let->let()[i])) {
+      vd->flat(Expression::cast<VarDecl>(flatmap[j++]()));
+    }
+  }
+  return ret;
 }
+}  // namespace MiniZinc

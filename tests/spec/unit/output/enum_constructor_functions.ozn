@@ -1,0 +1,9 @@
+output ["\"output\": {","\"dzn\": ",showJSON(concat(["x = ",_toString_Foo(x,true,false),";\n"])),"}, \"sections\": [\"dzn\"]"];
+function string : _toString_Foo(opt Foo: X_INTRODUCED_44_,bool: X_INTRODUCED_45_,bool: X_INTRODUCED_46_) = if absent(X_INTRODUCED_44_) then if X_INTRODUCED_46_ then "null" else "<>" endif else (if X_INTRODUCED_46_ then "{ \"c\" : \"C\", \"e\" : " else if X_INTRODUCED_45_ then showDznId("C") else "C" endif++"(" endif++'_1@_toString__constrId_0_Foo'('C⁻¹'(X_INTRODUCED_44_),X_INTRODUCED_45_,X_INTRODUCED_46_))++if X_INTRODUCED_46_ then "}" else ")" endif endif;
+function string : '_1@_toString__constrId_0_Foo'(opt int: X_INTRODUCED_60_,bool: X_INTRODUCED_61_,bool: X_INTRODUCED_62_) = show(X_INTRODUCED_60_);
+function opt _constrId_0_Foo : 'C⁻¹'(opt Foo: X_INTRODUCED_13_) = if occurs(X_INTRODUCED_13_) then 'C⁻¹'(deopt(X_INTRODUCED_13_)) else to_enum(_constrId_0_Foo,<>) endif;
+function _constrId_0_Foo : 'C⁻¹'(Foo: X_INTRODUCED_11_) = to_enum(_constrId_0_Foo,X_INTRODUCED_11_-_constrMin_0_Foo);
+int: _constrMin_0_Foo = 0;
+set of int: _constrId_0_Foo = 1..2;
+set of int: Foo = 1..2;
+int: x;

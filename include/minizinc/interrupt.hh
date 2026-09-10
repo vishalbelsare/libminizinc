@@ -14,17 +14,15 @@
 #ifdef _WIN32
 
 #include <Windows.h>
+#undef ERROR
 #include <sstream>
 #include <thread>
-
-// Remove conflicting Windows.h macro
-#undef ERROR
 
 namespace MiniZinc {
 // Listens for a message on the named pipe \\.\pipe\minizinc-PID
 // Triggers a Ctrl+C when an empty message is received.
 class InterruptListener {
- public:
+public:
   static InterruptListener& run() {
     static InterruptListener instance;
     return instance;
@@ -41,7 +39,7 @@ class InterruptListener {
     CloseHandle(hEvents[1]);
   }
 
- private:
+private:
   std::thread thread;
   HANDLE hNamedPipe;
 
@@ -54,7 +52,8 @@ class InterruptListener {
     std::stringstream ss;
     ss << "\\\\.\\pipe\\minizinc-" << GetCurrentProcessId();
     std::string pipeName = ss.str();
-    hNamedPipe = CreateNamedPipe(pipeName.c_str(), PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED, PIPE_TYPE_MESSAGE, 1, 0, 0, 0, NULL);
+    hNamedPipe = CreateNamedPipe(pipeName.c_str(), PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                                 PIPE_TYPE_MESSAGE, 1, 0, 0, 0, NULL);
 
     if (hEvents[0] && hEvents[1] && hNamedPipe) {
       SetConsoleCtrlHandler(CtrlHandler, TRUE);
@@ -64,21 +63,21 @@ class InterruptListener {
 
   void listen() {
     OVERLAPPED ol;
-
-    // Connect pipe
-    ZeroMemory(&ol, sizeof(OVERLAPPED));
-    ol.hEvent = hEvents[1];
-    ConnectNamedPipe(hNamedPipe, &ol);
-    DWORD ev = WaitForMultipleObjects(2, &hEvents[0], FALSE, INFINITE);
-    if (ev - WAIT_OBJECT_0 == 0) {
-      return;
-    }
-
-    // Listen for pings on pipe
     while (true) {
       ZeroMemory(&ol, sizeof(OVERLAPPED));
       ol.hEvent = hEvents[1];
-      ReadFile(hNamedPipe, NULL, 0, NULL, &ol);
+
+      // Each client connection is an interrupt ping; disconnect and rearm
+      // the single-instance pipe after delivering it.
+      BOOL connected = ConnectNamedPipe(hNamedPipe, &ol);
+      if (!connected) {
+        DWORD error = GetLastError();
+        if (error == ERROR_PIPE_CONNECTED) {
+          SetEvent(hEvents[1]);
+        } else if (error != ERROR_IO_PENDING) {
+          return;
+        }
+      }
 
       DWORD ev = WaitForMultipleObjects(2, &hEvents[0], FALSE, INFINITE);
       if (ev - WAIT_OBJECT_0 == 0) {
@@ -86,6 +85,7 @@ class InterruptListener {
       }
 
       GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
+      DisconnectNamedPipe(hNamedPipe);
     }
   }
 

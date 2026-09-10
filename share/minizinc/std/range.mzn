@@ -1,14 +1,16 @@
 include "fzn_range.mzn";
 include "fzn_range_reif.mzn";
 
-/** @group globals
-  Requires that the image of function \a x (represented as an array) on set
-  of values \a s is \a t.  ub(\a s) must be a subset of index_set(\a x) otherwise an
+predicate fzn_range(array [int] of var int: xs, var set of int: domain, var set of int: image);
+
+/** @group globals.math
+  Requires that the image of function \a xs (represented as an array) on set
+  of values \a domain is \a image.  ub(\a domain) must be a subset of index_set(\a xs) otherwise an
   assertion failure will occur.
 */
-predicate range(array[int] of var int: x, var set of int: s,
-                                          var set of int: t) =
-    assert(ub(s) subset index_set(x),
-        "range: upper bound of 's' must be a subset of the index set of 'x'",
-        fzn_range(x, s, t)
-    );
+predicate range(array [$$X] of var $$Y: xs, var set of $$X: domain, var set of $$Y: image) =
+  assert(
+    ub(domain) subset index_set(xs),
+    "range: upper bound of 'domain' must be a subset of the index set of 'xs'",
+    fzn_range(index2int(enum2int(xs)), enum2int(domain), enum2int(image)),
+  );

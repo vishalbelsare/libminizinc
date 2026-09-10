@@ -13,7 +13,7 @@
 
 // This is a workaround for a bug in flex that only shows up
 // with the Microsoft C++ compiler
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 #define YY_NO_UNISTD_H
 #ifdef __cplusplus
 extern "C" int isatty(int);
@@ -22,129 +22,244 @@ extern "C" int isatty(int);
 
 // The Microsoft C++ compiler marks certain functions as deprecated,
 // so let's take the alternative definitions
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 #define strdup _strdup
 #define fileno _fileno
 #endif
 
-#if defined(_MSC_VER)
-#pragma warning(disable:4065)
+#ifdef _MSC_VER
+#pragma warning(disable : 4065)
 #endif
 
+namespace MiniZinc {
+class ParserLocation;
+}
+#define YYLTYPE MiniZinc::ParserLocation
+#define YYLTYPE_IS_DECLARED 1
+#define YYLTYPE_IS_TRIVIAL 0
+
+#include <minizinc/astexception.hh>
+#include <minizinc/astmap.hh>
+#include <minizinc/file_utils.hh>
+#include <minizinc/library_bundle.hh>
 #include <minizinc/model.hh>
 #include <minizinc/parser.tab.hh>
-#include <minizinc/astexception.hh>
-#include <minizinc/file_utils.hh>
 
-#include <string>
-#include <vector>
-#include <map>
-#include <iostream>
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <map>
+#include <string>
+#include <utility>
+#include <vector>
+
+#ifdef _WIN32
+#include <locale.h>  // _create_locale, _free_locale
+#else
+#include <locale.h>  // newlocale, freelocale
+#endif
+
+#ifdef __APPLE__
+#include <xlocale.h>  // locale_t
+#endif
 
 namespace MiniZinc {
 
-  struct ParseWorkItem {
-    Model* m;
-    IncludeI* ii;
-    std::string dirName;
-    std::string fileName;
-    bool isModelString;
-    ParseWorkItem(Model* m0, IncludeI* ii0, const std::string& dirName0, const std::string& fileName0, bool isModelString0=false)
-    : m(m0), ii(ii0), dirName(dirName0), fileName(fileName0), isModelString(isModelString0) {}
-  };
-  
+struct ParseWorkItem {
+  Model* m;
+  IncludeI* ii;
+  std::string dirName;
+  std::string fileName;
+  bool isSTDLib;
+  bool isModelString;
+  ParseWorkItem(Model* m0, IncludeI* ii0, std::string dirName0, std::string fileName0,
+                bool isSTDLib0 = false, bool isModelString0 = false)
+      : m(m0),
+        ii(ii0),
+        dirName(std::move(dirName0)),
+        fileName(std::move(fileName0)),
+        isSTDLib(isSTDLib0),
+        isModelString(isModelString0) {}
+};
 
-  /// %State of the %MiniZinc parser
-  class ParserState {
-  public:
-    ParserState(const std::string& f,
-                const std::string& b, std::ostream& err0,
-                std::vector<ParseWorkItem>& files0,
-                std::map<std::string,Model*>& seenModels0,
-                MiniZinc::Model* model0,
-                bool isDatafile0, bool isFlatZinc0, bool parseDocComments0)
-    : filename(f.c_str()), buf(b.c_str()), pos(0), length(static_cast<unsigned int>(b.size())),
-      lineStartPos(0), nTokenNextStart(1), hadNewline(false),
-      files(files0), seenModels(seenModels0), model(model0),
-      isDatafile(isDatafile0), isFlatZinc(isFlatZinc0), parseDocComments(parseDocComments0),
-      hadError(false), err(err0) {}
-  
-    const char* filename;
-  
-    void* yyscanner;
-    const char* buf;
-    unsigned int pos, length;
+/// %State of the %MiniZinc parser
+class ParserState {
+public:
+  ParserState(const std::string& f, const std::string& b, EnvI& env0, std::ostream& err0,
+              const std::vector<std::string>& includePaths0, std::vector<ParseWorkItem>& files0,
+              std::map<std::string, Model*>& seenModels0, LibraryBundleCache& bundles0,
+              MiniZinc::Model* model0, std::vector<Call*>& dataFileCalls0, bool isDatafile0,
+              bool isFlatZinc0, bool isSTDLib0, bool parseDocComments0,
+              unsigned int lineOffset0 = 0)
+      : filename(f.c_str()),
+        lineOffset(lineOffset0),
+        buf(b.c_str()),
+        pos(0),
+        length(static_cast<unsigned int>(b.size())),
+        lineStartPos(0),
+        nTokenNextStart(1),
+        hadNewline(false),
+        includePaths(includePaths0),
+        files(files0),
+        seenModels(seenModels0),
+        bundles(bundles0),
+        model(model0),
+        dataFileCalls(dataFileCalls0),
+        isDatafile(isDatafile0),
+        isFlatZinc(isFlatZinc0),
+        isSTDLib(isSTDLib0),
+        parseDocComments(parseDocComments0),
+        hadError(false),
+        env(env0),
+        err(err0) {
+#ifdef _WIN32
+    cLocale = _create_locale(LC_ALL, "C");
+#else
+    cLocale = newlocale(LC_ALL_MASK, "C", nullptr);
+#endif
+  }
 
-    int lineStartPos;
-    int nTokenNextStart;
-    bool hadNewline;
+  ~ParserState() {
+    if (cLocale != nullptr) {
+#ifdef _WIN32
+      _free_locale(cLocale);
+#else
+      freelocale(cLocale);
+#endif
+    }
+  }
 
-    std::vector<ParseWorkItem>& files;
-    std::map<std::string,Model*>& seenModels;
-    MiniZinc::Model* model;
+  const char* filename;
+  /// Number to add to line numbers (non-zero for files parsed out of a library bundle)
+  unsigned int lineOffset;
 
-    bool isDatafile;
-    bool isFlatZinc;
-    bool parseDocComments;
-    bool hadError;
-    std::vector<SyntaxError> syntaxErrors;
-    std::ostream& err;
-    
-    std::string stringBuffer;
+  void* yyscanner;
+  const char* buf;
+  unsigned int pos, length;
 
-    void printCurrentLine(int firstCol, int lastCol) {
-      const char* eol_c = strchr(buf+lineStartPos,'\n');
-      if (eol_c) {
-        if (eol_c==buf+lineStartPos)
-          return;
-        err << std::string(buf+lineStartPos,eol_c-(buf+lineStartPos));
-      } else {
-        err << buf+lineStartPos;
+  int lineStartPos;
+  int nTokenNextStart;
+  bool hadNewline;
+
+  const std::vector<std::string>& includePaths;
+  std::vector<ParseWorkItem>& files;
+  std::map<std::string, Model*>& seenModels;
+  /// The library bundles read by this parse
+  LibraryBundleCache& bundles;
+  MiniZinc::Model* model;
+  /// Where calls found in a data file are recorded for the type checker
+  std::vector<Call*>& dataFileCalls;
+
+  bool isDatafile;
+  bool isFlatZinc;
+  bool isSTDLib;
+  bool parseDocComments;
+  bool hadError;
+  std::vector<SyntaxError> syntaxErrors;
+  EnvI& env;
+  std::ostream& err;
+
+  /// Record a warning, so that it is subject to the usual warning handling
+  /// (e.g. -Werror, --disable-warnings) rather than printed immediately
+  void addWarning(const Location& loc, const std::string& msg);
+
+  std::string stringBuffer;
+
+#ifdef _WIN32
+  _locale_t cLocale;
+#else
+  locale_t cLocale;
+#endif
+
+  std::string getCurrentLine(int firstCol, int lastCol) const {
+    std::stringstream ss;
+    const char* eol_c = strchr(buf + lineStartPos, '\n');
+    if (eol_c != nullptr) {
+      if (eol_c == buf + lineStartPos) {
+        return "";
       }
-      err << std::endl;
-      for (int i=0; i<firstCol-1; i++)
-        err << " ";
-      for (int i=firstCol; i<=lastCol; i++)
-        err << "^";
-      err << std::endl;
+      ss << std::string(buf + lineStartPos, eol_c - (buf + lineStartPos));
+    } else {
+      ss << buf + lineStartPos;
     }
-  
-    int fillBuffer(char* lexBuf, unsigned int lexBufSize) {
-      if (pos >= length)
-        return 0;
-      int num = std::min(length - pos, lexBufSize);
-      memcpy(lexBuf,buf+pos,num);
-      pos += num;
-      return num;    
+    ss << std::endl;
+    for (int i = 0; i < firstCol - 1; i++) {
+      ss << " ";
     }
+    for (int i = firstCol; i <= lastCol; i++) {
+      ss << "^";
+    }
+    return ss.str();
+  }
+  /// Same, but locating the line from a byte offset into `buf` rather than from
+  /// the lexer's running position (which the tree-sitter parser does not keep).
+  std::string getCurrentLine(unsigned int errByte, int firstCol, int lastCol) const {
+    unsigned int ls = std::min(errByte, length);
+    while (ls > 0 && buf[ls - 1] != '\n') {
+      ls--;
+    }
+    std::stringstream ss;
+    const char* eol_c = strchr(buf + ls, '\n');
+    if (eol_c == buf + ls) {
+      return "";
+    }
+    if (eol_c != nullptr) {
+      ss << std::string(buf + ls, eol_c - (buf + ls));
+    } else {
+      ss << buf + ls;
+    }
+    ss << std::endl;
+    for (int i = 0; i < firstCol - 1; i++) {
+      ss << " ";
+    }
+    for (int i = firstCol; i <= lastCol; i++) {
+      ss << "^";
+    }
+    return ss.str();
+  }
+  void printCurrentLine(int firstCol, int lastCol) {
+    err << getCurrentLine(firstCol, lastCol) << std::endl;
+  }
 
-  };
+  unsigned int fillBuffer(char* lexBuf, unsigned int lexBufSize) {
+    if (pos >= length) {
+      return 0;
+    }
+    unsigned int num = std::min(length - pos, lexBufSize);
+    memcpy(lexBuf, buf + pos, num);
+    pos += num;
+    return num;
+  }
 
-  Model* parse(Env& env,
-               const std::vector<std::string>& filename,
-               const std::vector<std::string>& datafiles,
-               const std::string& textModel,
-               const std::string& textModelName,
-               const std::vector<std::string>& includePaths,
-               bool ignoreStdlib, bool parseDocComments, bool verbose,
-               std::ostream& err);
+  std::string canonicalFilename(const std::string& f) const;
+};
 
-  Model* parseFromString(Env& env,
-                         const std::string& model,
-                         const std::string& filename,
-                         const std::vector<std::string>& includePaths,
-                         bool ignoreStdlib, bool parseDocComments, bool verbose,
-                         std::ostream& err,
-                         std::vector<SyntaxError>& syntaxErrors);
+/// Parse `pp.buf` with the tree-sitter grammar, adding the items to `pp.model`.
+/// Syntax errors accumulate in `pp.syntaxErrors`; this does not throw for them.
+void parse_tree_sitter(ParserState& pp);
 
-  Model* parseData(Env& env,
-                   Model* m,
-                   const std::vector<std::string>& datafiles,
-                   const std::vector<std::string>& includePaths,
-                   bool ignoreStdlib, bool parseDocComments, bool verbose,
-                   std::ostream& err);
+/// Selects the tree-sitter parser over the bison one. Initialised from the
+/// MZN_TREE_SITTER_PARSER environment variable; settable so that the
+/// differential test harness can parse the same file both ways.
+/// Temporary: goes away with the bison parser.
+extern bool use_tree_sitter_parser;
 
-}
+/// Parse a model. When \a checkGlobalOverrides is set, warn about files that
+/// override a global constraint file of the standard library (the last entry of
+/// \a includePaths); those should override fzn_<name> instead.
+Model* parse(Env& env, const std::vector<std::string>& filenames,
+             const std::vector<std::string>& datafiles, const std::string& textModel,
+             const std::string& textModelName, const std::vector<std::string>& includePaths,
+             bool checkGlobalOverrides, bool isFlatZinc, bool ignoreStdlib, bool parseDocComments,
+             bool verbose, std::ostream& err);
+
+Model* parse_from_string(Env& env, const std::string& text, const std::string& filename,
+                         const std::vector<std::string>& includePaths, bool isFlatZinc,
+                         bool ignoreStdlib, bool parseDocComments, bool verbose, std::ostream& err);
+
+Model* parse_data(Env& env, Model* m, const std::vector<std::string>& datafiles,
+                  const std::vector<std::string>& includePaths, bool isFlatZinc, bool ignoreStdlib,
+                  bool parseDocComments, bool verbose, std::ostream& err);
+
+}  // namespace MiniZinc

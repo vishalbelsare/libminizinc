@@ -17,7 +17,11 @@ file(RELATIVE_PATH REL_CMAKE_DIR "${CMAKE_INSTALL_PREFIX}"
 file(RELATIVE_PATH REL_INCLUDE_DIR "${INSTALL_CMAKE_DIR}"
      "${CMAKE_INSTALL_PREFIX}/include")
 
+set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(Threads)\n")
 # Add external (static) dependencies
+if (TARGET minizinc_atlantis)
+  set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(atlantis)\n")
+endif()
 if(TARGET minizinc_geas)
   install(
     FILES cmake/modules/FindGeas.cmake
@@ -37,13 +41,22 @@ if(TARGET minizinc_gecode)
   endif()
   set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(Gecode 6.0 COMPONENTS Driver Float Int Kernel Minimodel Search Set Support${_CONF_GIST})\n")
 endif()
+if(NOT HIGHS_PLUGIN)
+  set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(HIGHS)\n")
+endif()
 if(TARGET minizinc_osicbc)
   install(
     FILES cmake/modules/FindOsiCBC.cmake
     DESTINATION ${REL_CMAKE_DIR}
     COMPONENT dev
   )
+  if(UNIX AND NOT WIN32 AND NOT DEFINED EMSCRIPTEN)
+    set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(ZLIB)\n")
+  endif()
   set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(OsiCBC)\n")
+endif()
+if (TARGET minizinc_chuffed)
+  set(CONF_DEPENDENCIES "${CONF_DEPENDENCIES}find_dependency(chuffed)\n")
 endif()
 
 # Add all targets to the build-tree export set

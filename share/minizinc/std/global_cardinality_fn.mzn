@@ -1,10 +1,29 @@
 include "global_cardinality.mzn";
 
 /** @group globals.counting
-  Returns the number of occurrences of \a cover[\p i] in \a x.
+  Returns the number of occurrences of \a cover[\p i] in \a xs.
 */
-function array[int] of var int: global_cardinality(array[int] of var int: x,
-	  		                           array[int] of int: cover) :: promise_total =
-  let { array[index_set(cover)] of var 0..length(x): counts;
-        constraint global_cardinality(x,cover,counts) } in
-  counts;
+function array [$Y] of var int: global_cardinality(
+  array [$X] of var $$E: xs,
+  array [$Y] of $$E: cover,
+)
+  :: promise_total =
+  let {
+    any: cover1d = array1d(cover);
+    array [index_set(cover1d)] of var 0..length(xs): count :: is_defined_var;
+    constraint global_cardinality(array1d(xs), cover1d, count) :: defines_var(count);
+  } in arrayXd(cover, count);
+
+/** @group globals.counting
+  Returns the number of occurrences of \a cover[\p i] in \a xs.
+*/
+function array [$Y] of var int: global_cardinality(
+  array [$X] of var opt $$E: xs,
+  array [$Y] of $$E: cover,
+)
+  :: promise_total =
+  let {
+    any: cover1d = array1d(cover);
+    array [index_set(cover1d)] of var 0..length(xs): count :: is_defined_var;
+    constraint global_cardinality(array1d(xs), cover1d, count) :: defines_var(count);
+  } in arrayXd(cover, count);

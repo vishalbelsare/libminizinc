@@ -1,35 +1,43 @@
-include "member_bool.mzn";
-include "member_float.mzn";
-include "member_int.mzn";
-include "member_set.mzn";
-include "set_member.mzn";
+include "fzn_member_bool.mzn";
+include "fzn_member_bool_reif.mzn";
+include "fzn_member_float.mzn";
+include "fzn_member_float_reif.mzn";
+include "fzn_member_int.mzn";
+include "fzn_member_int_reif.mzn";
+include "fzn_member_set.mzn";
+include "fzn_member_set_reif.mzn";
+include "fzn_set_member.mzn";
+include "fzn_set_member_reif.mzn";
 
-/** @group globals
+predicate fzn_member_bool(array [int] of var bool: x, var bool: y);
+predicate fzn_member_float(array [int] of var float: x, var float: y);
+predicate fzn_member_int(array [int] of var int: x, var int: y);
+predicate fzn_member_set(array [int] of var set of int: x, var set of int: y);
+predicate fzn_set_member(var set of int: x, var int: y);
+
+/** @group globals.array
   Requires that \a y occurs in the array \a x.
 */
-predicate member(array[int] of var bool: x, var bool: y) =
-    member_bool(x, y);
+predicate member(array [$X] of var bool: x, var bool: y) = fzn_member_bool(array1d(x), y);
 
-/** @group globals
+/** @group globals.array
   Requires that \a y occurs in the array \a x.
 */
-predicate member(array[int] of var float: x, var float: y) =
-    member_float(x, y);
+predicate member(array [$X] of var float: x, var float: y) = fzn_member_float(array1d(x), y);
 
-/** @group globals
+/** @group globals.array
   Requires that \a y occurs in the array \a x.
 */
-predicate member(array[int] of var int: x, var int: y) =
-    member_int(x, y);
+predicate member(array [$X] of var $$E: x, var $$E: y) =
+  fzn_member_int(enum2int(array1d(x)), enum2int(y));
 
-/** @group globals
+/** @group globals.array
   Requires that \a y occurs in the array \a x.
 */
-predicate member(array[int] of var set of int: x, var set of int: y) =
-    member_set(x, y);
+predicate member(array [$X] of var set of $$E: x, var set of $$E: y) =
+  fzn_member_set(enum2int(array1d(x)), enum2int(y));
 
-/** @group globals
+/** @group globals.array
   Requires that \a y occurs in the set \a x.
 */
-predicate member(var set of int: x, var int: y) =
-    set_member(x, y);
+predicate member(var set of $$E: x, var $$E: y) = fzn_set_member(enum2int(x), enum2int(y));

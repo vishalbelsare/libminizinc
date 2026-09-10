@@ -11,38 +11,39 @@
 
 #pragma once
 
-#include <ctime>
 #include <chrono>
-#include <ratio>
+#include <ctime>
 #include <iomanip>
+#include <ratio>
 #include <sstream>
 
 namespace MiniZinc {
-  
-  class Timer {
-  protected:
-    std::chrono::steady_clock::time_point last;
-  public:
-    /// Construct timer
-    Timer(void) : last(std::chrono::steady_clock::now()) {}
-    /// Reset timer
-    void reset(void) {
-      last = std::chrono::steady_clock::now();
-    }
-    /// Return milliseconds since timer was last reset
-    long long int ms(void) const {
-      return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-last).count();
-    }
-    /// Return seconds since timer was last reset
-    double s(void) const {
-      return std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now()-last).count();
-    }
-    std::string stoptime(void) const {
-      std::ostringstream oss;
-      oss << std::setprecision(2) << std::fixed << s() << " s";
-      return oss.str();
-    }
 
-  };
-  
-}
+class Timer {
+protected:
+  std::chrono::steady_clock::time_point _last;
+
+public:
+  /// Construct timer
+  Timer() : _last(std::chrono::steady_clock::now()) {}
+  /// Reset timer
+  void reset() { _last = std::chrono::steady_clock::now(); }
+  /// Return milliseconds since timer was last reset
+  std::chrono::milliseconds ms() const {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
+                                                                 _last);
+  }
+  /// Return seconds since timer was last reset
+  double s() const {
+    return std::chrono::duration_cast<std::chrono::duration<double> >(
+               std::chrono::steady_clock::now() - _last)
+        .count();
+  }
+  std::string stoptime() const {
+    std::ostringstream oss;
+    oss << std::setprecision(2) << std::fixed << s() << " s";
+    return oss.str();
+  }
+};
+
+}  // namespace MiniZinc

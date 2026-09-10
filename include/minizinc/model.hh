@@ -11,408 +11,618 @@
 
 #pragma once
 
-#include <vector>
+#include <minizinc/ast.hh>
+#include <minizinc/astmap.hh>
+#include <minizinc/gc.hh>
+#include <minizinc/warning.hh>
+
 #include <iterator>
 #include <unordered_map>
 #include <unordered_set>
-
-#include <minizinc/gc.hh>
-#include <minizinc/ast.hh>
+#include <vector>
 
 namespace MiniZinc {
-  
-  class VarDeclIterator;
-  class ConstraintIterator;
-  class FunctionIterator;
 
-  class CopyMap;
-  class EnvI;
-  
-  /// A MiniZinc model
-  class Model {
-    friend class GC;
-    friend Model* copy(EnvI& env, CopyMap& cm, Model* m, bool isFlatModel);
+class VarDeclIterator;
+class ConstraintIterator;
+class FunctionIterator;
 
-  protected:
-    /// Previous model in root set list
-    Model* _roots_prev;
-    /// Next model in root set list
-    Model* _roots_next;
+class CopyMap;
+class EnvI;
 
-  public:
-    struct FnEntry {
-      std::vector<Type> t;
-      FunctionI* fi;
-      bool isPolymorphic;
-      FnEntry(FunctionI* fi0);
-      bool operator <(const FnEntry&) const;
-      static bool compare(const FnEntry& e1, const FnEntry& e2);
-    };
-  protected:
-    /// Add all instances of polymorphic entry \a fe to \a entries
-    void addPolymorphicInstances(Model::FnEntry& fe, std::vector<FnEntry>& entries);
-    
-    /// Type of map from identifiers to function declarations
-    typedef ASTStringMap<std::vector<FnEntry> >::t FnMap;
-    /// Map from identifiers to function declarations
-    FnMap fnmap;
+class Model;
+class TypeError;
 
-    /// Type of map from Type (represented as int) to reverse mapper functions
-    typedef std::unordered_map<int, FunctionI*> RevMapperMap;
-    /// Map from Type (represented as int) to reverse mapper functions
-    RevMapperMap revmapmap;
-    
-    /// Filename of the model
-    ASTString _filename;
-    /// Path of the model
-    ASTString _filepath;
-    /// Parent model if model was included
-    Model* _parent;
-    /// Items in the model
-    std::vector<Item*> _items;
-    /// Pointer to the solve item
-    SolveI* _solveItem;
-    /// Pointer to the output item
-    OutputI* _outputItem;
-    /// File-level documentation comment
-    std::string _docComment;
+class VarDeclIteratorContainer {
+private:
+  Model* _m;
 
-    /// Store some declarations
-    struct FnDecls {
-      using TCheckedDecl = std::pair<bool, FunctionI*>;  // bool means that it was checked
-      TCheckedDecl bounds_disj={false, nullptr};         // SCIP's bound disjunction
-    } fnDecls;
-  public:
-    
-    /// Construct empty model
-    Model(void);
-    /// Destructor
-    ~Model(void);
-    
-    /// Add \a i to the model
-    void addItem(Item* i);
-    
-    /// Get parent model
-    Model* parent(void) const { return _parent; }
-    /// Set parent model to \a p
-    void setParent(Model* p) { assert(_parent==NULL); _parent = p; }
-    
-    /// Get file name
-    ASTString filename(void) const { return _filename; }
-    /// Get file path
-    ASTString filepath(void) const { return _filepath; }
-    /// Set file name
-    void setFilename(const std::string& f) {
-      assert(_filename.size()==0);
-      _filename = ASTString(f);
-    }
-    /// Set file path
-    void setFilepath(const std::string& f) {
-      assert(_filepath.size()==0);
-      _filepath = ASTString(f);
-    }
+public:
+  VarDeclIteratorContainer(Model* m) : _m(m) {}
+  VarDeclIterator begin();
+  VarDeclIterator end();
+};
 
-    /// Register a builtin function item
-    void registerFn(EnvI& env, FunctionI* fi);
-    /// Sort functions by type
-    void sortFn(void);
-    /// Check that registered functions do not clash wrt overloading
-    void checkFnOverloading(EnvI& env);
-    /// Fix function table after type checking
-    void fixFnMap(void);
-    /// Return function declaration for \a id matching \a args
-    FunctionI* matchFn(EnvI& env, const ASTString& id,
-                       const std::vector<Expression*>& args,
-                       bool strictEnums) const;
-    /// Return function declaration for \a id matching types \a t
-    FunctionI* matchFn(EnvI& env, const ASTString& id, const std::vector<Type>& t,
-                       bool strictEnums);
-    /// Return function declaration matching call \a c
-    FunctionI* matchFn(EnvI& env, Call* c, bool strictEnums) const;
-    /// Return function declaration for reverse mapper for type \a t
-    FunctionI* matchRevMap(EnvI& env, const Type& t) const;
-    /// Check whether functions \a f and \a g have the same overloaded variants
-    bool sameOverloading(EnvI& env, const std::vector<Expression*>& args, FunctionI* f, FunctionI* g) const;
-    /// Merge all builtin functions into \a m
-    void mergeStdLib(EnvI& env, Model* m) const;
+class ConstraintIteratorContainer {
+private:
+  Model* _m;
 
-    /// Return item \a i
-    Item*& operator[] (int i);
-    /// Return item \a i
-    const Item* operator[] (int i) const;
-    /// Return number of items
-    unsigned int size(void) const;
-    
-    typedef std::vector<Item*>::iterator iterator;
-    typedef std::vector<Item*>::const_iterator const_iterator;
-    
-    /// Iterator for beginning of items
-    iterator begin(void);
-    /// Iterator for beginning of items
-    const_iterator begin(void) const;
-    /// Iterator for end of items
-    iterator end(void);
-    /// Iterator for end of items
-    const_iterator end(void) const;
+public:
+  ConstraintIteratorContainer(Model* m) : _m(m) {}
+  ConstraintIterator begin();
+  ConstraintIterator end();
+};
 
-    ConstraintIterator begin_constraints(void);
-    ConstraintIterator end_constraints(void);
-    VarDeclIterator begin_vardecls(void);
-    VarDeclIterator end_vardecls(void);
-    FunctionIterator begin_functions(void);
-    FunctionIterator end_functions(void);
-    
-    SolveI* solveItem(void);
+class FunctionIteratorContainer {
+private:
+  Model* _m;
 
-    OutputI* outputItem(void);
-    void setOutputItem(OutputI* oi);
+public:
+  FunctionIteratorContainer(Model* m) : _m(m) {}
+  FunctionIterator begin();
+  FunctionIterator end();
+};
 
-    
-    /// Add a file-level documentation comment
-    void addDocComment(std::string s) { _docComment += s; }
+/// A MiniZinc model
+class Model : public GCMarker {
+  friend Model* copy(EnvI& env, CopyMap& cm, Model* m, bool isFlatModel);
 
-    /// Return the file-level documentation comment
-    const std::string& docComment(void) const { return _docComment; }
-    
-    /// Remove all items marked as removed
-    void compact(void);
-
-    /// Get the stored function declarations
-    FnDecls& getFnDecls() { return fnDecls; }
+public:
+  struct FnEntry {
+    std::vector<Type> t;
+    FunctionI* fi;
+    bool isPolymorphic;
+    bool isPolymorphicVariant;
+    FnEntry(EnvI& env, FunctionI* fi0);
+    static bool checkPoly(const EnvI& env, const Type& t);
+    static bool compare(const EnvI& env, const FnEntry& e1, const FnEntry& e2);
   };
 
-  class VarDeclIterator {
-    Model* _model;
-    Model::iterator _it;
-  public:
-    typedef Model::iterator::difference_type difference_type;
-    typedef Model::iterator::value_type value_type;
-    typedef VarDeclI& reference;
-    typedef VarDeclI* pointer;
-    typedef std::forward_iterator_tag iterator_category;
-    
-    VarDeclIterator() {}
-    VarDeclIterator(const VarDeclIterator& vi) : _it(vi._it) {}
-    VarDeclIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
-      while (_it != _model->end() && (!(*_it)->isa<VarDeclI>() || (*_it)->removed())) {
-        ++_it;
+  /// A body-less declaration recorded as the name-authority anchor for its
+  /// overload family (see checkAuthoritativeParameterNames). Captured in
+  /// registerFn before the override merge can consume the body-less
+  /// declaration.
+  struct FnAnchor {
+    FunctionI* fi;  ///< the body-less declaration (source of canonical names)
+  };
+
+protected:
+  /// Add all instances of polymorphic entry \a fe to \a entries
+  static void addPolymorphicInstances(EnvI& env, Model::FnEntry& fe, std::vector<FnEntry>& entries);
+
+  void mark() override {
+    _filepath.mark();
+    _filename.mark();
+    for (auto& _item : _items) {
+      Item::mark(_item);
+    }
+  };
+
+  /// Type of map from identifiers to function declarations
+  using FnMap = ASTStringMap<std::vector<FnEntry>>;
+  /// Map from identifiers to function declarations
+  FnMap _fnmap;
+
+  /// Type of map from identifiers to their name-authority anchors
+  using FnAnchorMap = ASTStringMap<std::vector<FnAnchor>>;
+  /// Body-less declarations that fix the canonical parameter names for their
+  /// overload family, captured in registerFn keyed by identifier. Populated
+  /// eagerly because the override merge in registerFn replaces a body-less
+  /// declaration with a bodied one of the same type, discarding its names.
+  FnAnchorMap _fnAnchors;
+
+  /// Type of map from Type (represented as int) to reverse mapper functions
+  using RevMapperMap = std::unordered_map<int, FunctionI*>;
+  /// Map from Type (represented as int) to reverse mapper functions
+  RevMapperMap _revmapmap;
+
+  /// Filename of the model
+  ASTString _filename;
+  /// Path of the model
+  ASTString _filepath;
+  /// Parent model if model was included
+  Model* _parent;
+  /// Items in the model
+  std::vector<Item*> _items;
+  /// Pointer to the solve item
+  SolveI* _solveItem;
+  /// Pointer to the output item
+  OutputI* _outputItem;
+  /// File-level documentation comment
+  std::string _docComment;
+
+  /// Store some declarations
+  struct FnDecls {
+    using TCheckedDecl = std::pair<bool, FunctionI*>;  // bool means that it was checked
+    TCheckedDecl boundsDisj = {false, nullptr};        // SCIP's bound disjunction
+  } _fnDecls;
+
+public:
+  /// Construct empty model
+  Model();
+  /// Destructor
+  ~Model() override;
+
+  /// Add \a i to the model
+  void addItem(Item* i);
+
+  /// Get parent model
+  Model* parent() const { return _parent; }
+  /// Set parent model to \a p
+  void setParent(Model* p) {
+    assert(_parent == nullptr);
+    _parent = p;
+  }
+
+  /// Get file name
+  ASTString filename() const { return _filename; }
+  /// Get file path
+  ASTString filepath() const { return _filepath; }
+  /// Set file name
+  void setFilename(const std::string& f) {
+    assert(_filename.empty());
+    _filename = ASTString(f);
+  }
+  /// Set file name
+  void setFilename(const ASTString& f) { _filename = f; }
+  /// Set file path
+  void setFilepath(const std::string& f) {
+    assert(_filepath.empty());
+    _filepath = ASTString(f);
+  }
+  void setFilepath(const ASTString& f) {
+    assert(_filepath.empty());
+    _filepath = f;
+  }
+
+  /// Register a builtin function item
+  bool registerFn(EnvI& env, FunctionI* fi, bool keepSorted = false, bool throwIfDuplicate = true);
+  /// Sort functions by type
+  void sortFn(const EnvI& env);
+  /// Sort functions with same name as \a fi by type
+  void sortFn(const EnvI& env, FunctionI* fi);
+  /// Check that registered functions do not clash wrt overloading
+  void checkFnOverloading(EnvI& env);
+  /// Fix function table for fi during type checking
+  void fixFnMap(FunctionI* fi);
+  /// Check whether all functions in function map can be flattened or evaluated
+  void checkFnValid(EnvI& env, std::vector<TypeError>& errors);
+  /// Return the function declaration for the reficiation for a function with identifier \a id that
+  /// will take arguments \a args.
+  ///
+  /// WARNING: \a args is expected to include the reification argument.
+  FunctionI* matchReification(EnvI& env, const ASTString& id, const std::vector<Expression*>& args,
+                              bool canHalfReify, bool strictEnums) const;
+  /// Return the function declaration for the reficiation for a function with identifier \a id that
+  /// will take the argument types \a t.
+  ///
+  /// WARNING: \a t is expected to include the type of the reification variable.
+  FunctionI* matchReification(EnvI& env, const ASTString& id, const std::vector<Type>& t,
+                              bool canHalfReify, bool strictEnums) const;
+  /// Return function declaration for \a id matching \a args
+  FunctionI* matchFn(EnvI& env, const ASTString& id, const std::vector<Expression*>& args,
+                     bool strictEnums) const;
+  /// Return function declaration for \a id matching types \a t
+  FunctionI* matchFn(EnvI& env, const ASTString& id, const std::vector<Type>& t,
+                     bool strictEnums) const;
+  /// Return function declaration matching call \a c
+  FunctionI* matchFn(EnvI& env, Call* c, bool strictEnums, bool throwIfNotFound = false) const;
+  /// Resolve a call with named-argument bindings against \a c->id()'s plain
+  /// bucket. \a positional are the arguments supplied by position, in source
+  /// order; \a named are (parameter-name, expression) pairs supplied by name
+  /// (caller is responsible for rejecting duplicate names). Candidate
+  /// FunctionIs must have paramCount == positional.size() + named.size(),
+  /// must contain each supplied name in their parameter list at index
+  /// >= positional.size(), and must not have any positional-prefix parameter
+  /// whose name collides with a supplied named name. Subtyping is applied
+  /// per parameter; ordering follows the existing bucket sort (more-specific
+  /// first). Returns nullptr if no candidate matches and \a throwIfNotFound
+  /// is false; throws TypeError otherwise. When \a skipAnchored is true,
+  /// body-less-anchored (builtin) overloads are ignored, so the call resolves
+  /// only among user and bodied-library overloads; the front-end gate uses this
+  /// to keep builtins positional-only.
+  FunctionI* matchFnNamed(EnvI& env, Call* c, const std::vector<Expression*>& positional,
+                          const std::vector<std::pair<ASTString, Expression*>>& named,
+                          bool strictEnums, bool throwIfNotFound, bool skipAnchored = false) const;
+  /// Find the reified (or half-reified) sibling of the function bound to
+  /// \a c->decl() whose first \a c->decl()->paramCount() parameter names
+  /// match \a c->decl()'s. Used at flatten-time reification to propagate
+  /// the named-argument disambiguation into the reif/imp Call so that
+  /// matchFn(Call*) can later pick the correct sibling when two name-only-
+  /// different overloads both have reif/imp companions. Returns nullptr if
+  /// \a c->decl() is null or no name-matched sibling exists; callers
+  /// should fall back to the type-only matchReification in that case.
+  FunctionI* matchReifByNames(EnvI& env, const Call* c, bool canHalfReify, bool strictEnums) const;
+  /// Re-resolve a call by parameter NAMES rather than by type alone. Given the
+  /// call's resolved \a baseDecl, find the overload registered under \a id whose
+  /// leading \a baseDecl->paramCount() parameter names match \a baseDecl's and
+  /// whose registered types accept \a args. This is the name-aware counterpart
+  /// of matchFn(id, args), used when a call is rewritten into a wider form
+  /// (function->relation conversion appends a result argument; par-version
+  /// construction keeps the arity) and the originating decl must be honoured so
+  /// a name-only sibling is not silently substituted. \a args may be longer than
+  /// \a baseDecl; the trailing positions are matched on type only. Names are read
+  /// directly off \a baseDecl. Returns nullptr if \a baseDecl is null or nothing
+  /// matches.
+  FunctionI* matchFnByNames(EnvI& env, const ASTString& id, FunctionI* baseDecl,
+                            const std::vector<Type>& t, bool strictEnums) const;
+  /// As above, taking argument expressions whose types are matched.
+  FunctionI* matchFnByNames(EnvI& env, const ASTString& id, FunctionI* baseDecl,
+                            const std::vector<Expression*>& args, bool strictEnums) const;
+  /// Find the par version of \a f: the overload under f's identifier accepting
+  /// the par-coerced types \a tv. Unlike matchFnByNames this matches a genuine
+  /// coercion par sibling even when its parameter names differ from f, but
+  /// redirects a name-only sibling (identical parameter types, different names,
+  /// different body) back to \a f so each gets its own par copy. Always returns
+  /// non-null (at worst \a f itself). Used by the par-version generation pass.
+  FunctionI* matchParVersion(EnvI& env, FunctionI* f, const std::vector<Type>& tv,
+                             bool strictEnums) const;
+  /// Return function declarations that are potential overloads for call \a c (same identifier and
+  /// same number of arguments)
+  std::vector<FunctionI*> potentialOverloads(EnvI& env, Call* c) const;
+  /// Warn about overload sets in which narrowing a call's arguments during
+  /// flattening (var->par or opt->present) would re-resolve it by type to a
+  /// sibling declaration with different parameter names, with no
+  /// name-compatible sibling to rewrite to instead.
+  void checkSiblingParameterNames(EnvI& env) const;
+  /// Warn about `_reif`/`_imp` predicates whose leading parameter names disagree
+  /// with the base predicate that has exactly the same leading parameter types.
+  /// A call is re-resolved to its reification by matching the base's parameter
+  /// names, so a disagreement can hide the reification. When the base's family is
+  /// anchored (a body-less builtin) the re-match falls back to a type-only lookup,
+  /// so the disagreement is harmless; those families are only reported when opted
+  /// in via EnvI::warnNonAuthoritativeNames. Non-anchored families are always
+  /// reported.
+  void checkReifParameterNames(EnvI& env) const;
+  /// Warn about declarations whose parameter names disagree with the body-less
+  /// declaration that anchors their overload family (same identifier, same
+  /// parameter types up to var/par and optionality). A body-less declaration is
+  /// a callable builtin, so it fixes the parameter names by which its family can
+  /// be called; a divergent sibling cannot be reached by those names. Opt-in
+  /// (see EnvI::warnNonAuthoritativeNames): only run when explicitly requested.
+  void checkAuthoritativeParameterNames(EnvI& env) const;
+  /// True if the overload family of \a fi - identified by \a fi's identifier and
+  /// its signature class (parameter types up to var/par and optionality) - is
+  /// governed by a body-less anchor, i.e. contains a callable builtin. Such
+  /// families are positional-only: named calls to them are rejected by the
+  /// front-end gate, and they are re-matched by type alone during flattening.
+  bool isFnAnchored(EnvI& env, const FunctionI* fi) const;
+  /// True if identifier \a id has a body-less anchored overload that a call
+  /// supplying \a nArgs arguments could target by arity (any parameter beyond
+  /// \a nArgs is defaulted). The front-end gate uses this to reject a named call
+  /// to a builtin with a clear message even when the supplied names match no
+  /// overload (e.g. a solver library renamed the parameters).
+  bool hasAnchoredArityMatch(const ASTString& id, unsigned int nArgs) const;
+  /// Return function declaration for reverse mapper for type \a t
+  FunctionI* matchRevMap(EnvI& env, const Type& t) const;
+  /// Check if function with this name exists
+  bool fnExists(EnvI& env, const ASTString& id) const;
+  /// Check whether functions \a f and \a g have the same overloaded variants
+  bool sameOverloading(EnvI& env, const std::vector<Expression*>& args, FunctionI* f,
+                       FunctionI* g) const;
+  /// Merge all builtin functions into \a m
+  void mergeStdLib(EnvI& env, Model* m) const;
+
+  /// Return item \a i
+  Item*& operator[](unsigned int i);
+  /// Return item \a i
+  const Item* operator[](unsigned int i) const;
+  /// Return number of items
+  unsigned int size() const;
+  /// Return whether model is empty
+  bool empty() const;
+
+  typedef std::vector<Item*>::iterator iterator;
+  typedef std::vector<Item*>::const_iterator const_iterator;
+
+  /// Iterator for beginning of items
+  iterator begin();
+  /// Iterator for beginning of items
+  const_iterator begin() const;
+  /// Iterator for end of items
+  iterator end();
+  /// Iterator for end of items
+  const_iterator end() const;
+
+  ConstraintIteratorContainer constraints();
+  VarDeclIteratorContainer vardecls();
+  FunctionIteratorContainer functions();
+
+  SolveI* solveItem();
+
+  OutputI* outputItem();
+  void setOutputItem(OutputI* oi);
+
+  /// Add a file-level documentation comment
+  void addDocComment(const std::string& s) { _docComment += s; }
+
+  /// Return the file-level documentation comment
+  const std::string& docComment() const { return _docComment; }
+
+  /// Remove all items marked as removed
+  void compact();
+
+  /// Get the stored function declarations
+  FnDecls& getFnDecls() { return _fnDecls; }
+};
+
+class VarDeclIterator {
+  Model* _model;
+  Model::iterator _it;
+
+public:
+  typedef Model::iterator::difference_type difference_type;
+  typedef Model::iterator::value_type value_type;
+  typedef VarDeclI& reference;
+  typedef VarDeclI* pointer;
+  typedef std::forward_iterator_tag iterator_category;
+
+  VarDeclIterator() {}
+  VarDeclIterator(const VarDeclIterator& vi) : _model(vi._model), _it(vi._it) {}
+  VarDeclIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
+    while (_it != _model->end() && (!(*_it)->isa<VarDeclI>() || (*_it)->removed())) {
+      ++_it;
+    }
+  }
+  ~VarDeclIterator() {}
+
+  VarDeclIterator& operator=(const VarDeclIterator& vi) {
+    if (this != &vi) {
+      _it = vi._it;
+    }
+    return *this;
+  }
+  bool operator==(const VarDeclIterator& vi) const { return _it == vi._it; }
+  bool operator!=(const VarDeclIterator& vi) const { return _it != vi._it; }
+  VarDeclIterator& operator++() {
+    do {
+      ++_it;
+    } while (_it != _model->end() && (!(*_it)->isa<VarDeclI>() || (*_it)->removed()));
+    return *this;
+  }
+
+  reference operator*() const { return *(*_it)->cast<VarDeclI>(); }
+  pointer operator->() const { return (*_it)->cast<VarDeclI>(); }
+};
+
+class ConstraintIterator {
+  Model* _model;
+  Model::iterator _it;
+
+public:
+  typedef Model::iterator::difference_type difference_type;
+  typedef Model::iterator::value_type value_type;
+  typedef ConstraintI& reference;
+  typedef ConstraintI* pointer;
+  typedef std::forward_iterator_tag iterator_category;
+
+  ConstraintIterator() {}
+  ConstraintIterator(const ConstraintIterator& vi) : _model(vi._model), _it(vi._it) {}
+  ConstraintIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
+    while (_it != _model->end() && (!(*_it)->isa<ConstraintI>() || (*_it)->removed())) {
+      ++_it;
+    }
+  }
+  ~ConstraintIterator() {}
+
+  ConstraintIterator& operator=(const ConstraintIterator& vi) {
+    if (this != &vi) {
+      _it = vi._it;
+    }
+    return *this;
+  }
+  bool operator==(const ConstraintIterator& vi) const { return _it == vi._it; }
+  bool operator!=(const ConstraintIterator& vi) const { return _it != vi._it; }
+  ConstraintIterator& operator++() {
+    do {
+      ++_it;
+    } while (_it != _model->end() && (!(*_it)->isa<ConstraintI>() || (*_it)->removed()));
+    return *this;
+  }
+
+  reference operator*() const { return *(*_it)->cast<ConstraintI>(); }
+  pointer operator->() const { return (*_it)->cast<ConstraintI>(); }
+};
+
+class FunctionIterator {
+  Model* _model;
+  Model::iterator _it;
+
+public:
+  typedef Model::iterator::difference_type difference_type;
+  typedef Model::iterator::value_type value_type;
+  typedef FunctionI& reference;
+  typedef FunctionI* pointer;
+  typedef std::forward_iterator_tag iterator_category;
+
+  FunctionIterator() {}
+  FunctionIterator(const FunctionIterator& vi) : _model(vi._model), _it(vi._it) {}
+  FunctionIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
+    while (_it != _model->end() && (!(*_it)->isa<FunctionI>() || (*_it)->removed())) {
+      ++_it;
+    }
+  }
+  ~FunctionIterator() {}
+
+  FunctionIterator& operator=(const FunctionIterator& vi) {
+    if (this != &vi) {
+      _it = vi._it;
+    }
+    return *this;
+  }
+  bool operator==(const FunctionIterator& vi) const { return _it == vi._it; }
+  bool operator!=(const FunctionIterator& vi) const { return _it != vi._it; }
+  FunctionIterator& operator++() {
+    do {
+      ++_it;
+    } while (_it != _model->end() && (!(*_it)->isa<FunctionI>() || (*_it)->removed()));
+    return *this;
+  }
+
+  reference operator*() const { return *(*_it)->cast<FunctionI>(); }
+  pointer operator->() const { return (*_it)->cast<FunctionI>(); }
+};
+
+class EnvI;
+
+/// Environment
+class Env {
+private:
+  EnvI* _e;
+
+public:
+  Env(Model* m = nullptr, std::ostream& outstream = std::cout, std::ostream& errstream = std::cerr);
+  ~Env();
+
+  Model* model();
+  void model(Model* m);
+  Model* flat();
+  void swap();
+  Model* output();
+  EnvI& envi();
+  const EnvI& envi() const;
+  const std::vector<std::unique_ptr<Warning>>& warnings();
+  std::ostream& dumpWarnings(std::ostream& os, bool werror, bool json, int exceptWarning = -1);
+  void clearWarnings();
+  unsigned int maxCallStack() const;
+  std::ostream& evalOutput(std::ostream& os, std::ostream& log);
+};
+
+/// Boolean evaluation context
+enum BCtx { C_ROOT, C_POS, C_NEG, C_MIX };
+
+/// Evaluation context
+struct Ctx {
+  /// Boolean context
+  BCtx b;
+  /// Integer context
+  BCtx i;
+  /// Boolen negation flag
+  bool neg;
+  /// Default constructor (root context)
+  Ctx() : b(C_ROOT), i(C_MIX), neg(false) {}
+  /// Copy constructor
+  Ctx(const Ctx& ctx) : b(ctx.b), i(ctx.i), neg(ctx.neg) {}
+  /// Assignment operator
+  Ctx& operator=(const Ctx& ctx) {
+    if (this != &ctx) {
+      b = ctx.b;
+      i = ctx.i;
+      neg = ctx.neg;
+    }
+    return *this;
+  }
+  /// Return true variable if in root context, nullptr otherwise
+  VarDecl* partialityVar(EnvI& env) const;
+};
+
+/// Turn \a c into positive context
+BCtx operator+(const BCtx& c);
+/// Negate context \a c
+BCtx operator-(const BCtx& c);
+
+class CallStackItem {
+private:
+  EnvI& _env;
+  enum CSIType { CSI_NONE, CSI_VD, CSI_REDUNDANT, CSI_SYMMETRY } _csiType;
+  bool _maybePartial;
+
+public:
+  CallStackItem(EnvI& env0, Expression* e, const Ctx& ctx = Ctx());
+  CallStackItem(EnvI& env0, Id* ident, IntVal i);
+  void replace();
+  ~CallStackItem();
+};
+
+/// Visitor for model items
+class ItemVisitor {
+public:
+  /// Enter model
+  static bool enterModel(Model* /*m*/) { return true; }
+  /// Enter item
+  static bool enter(Item* /*m*/) { return true; }
+  /// Visit include item
+  void vIncludeI(IncludeI* /*ii*/) {}
+  /// Visit variable declaration
+  void vVarDeclI(VarDeclI* /*vdi*/) {}
+  /// Visit assign item
+  void vAssignI(AssignI* /*ai*/) {}
+  /// Visit constraint item
+  void vConstraintI(ConstraintI* /*ci*/) {}
+  /// Visit solve item
+  void vSolveI(SolveI* /*si*/) {}
+  /// Visit output item
+  void vOutputI(OutputI* /*oi*/) {}
+  /// Visit function item
+  void vFunctionI(FunctionI* /*fi*/) {}
+};
+
+/// Iterator over items in a model and all its included models
+template <class I>
+class ItemIter {
+protected:
+  I& _iter;
+
+public:
+  ItemIter(I& iter) : _iter(iter) {}
+  void run(Model* m) {
+    std::unordered_set<Model*> seen;
+    std::vector<Model*> models;
+    models.push_back(m);
+    seen.insert(m);
+    while (!models.empty()) {
+      Model* cm = models.back();
+      models.pop_back();
+      if (!_iter.enterModel(cm)) {
+        continue;
       }
-    }
-    ~VarDeclIterator() {}
-    
-    VarDeclIterator& operator=(const VarDeclIterator& vi) {
-      if (this != &vi) {
-        _it = vi._it;
-      }
-      return *this;
-    }
-    bool operator==(const VarDeclIterator& vi) const { return _it == vi._it; }
-    bool operator!=(const VarDeclIterator& vi) const { return _it != vi._it; }
-    VarDeclIterator& operator++() {
-      do {
-        ++_it;
-      } while (_it != _model->end() && (!(*_it)->isa<VarDeclI>() || (*_it)->removed()));
-      return *this;
-    }
-    
-    reference operator*() const { return *(*_it)->cast<VarDeclI>(); }
-    pointer operator->() const { return (*_it)->cast<VarDeclI>(); }
-  };
-
-  class ConstraintIterator {
-    Model* _model;
-    Model::iterator _it;
-  public:
-    typedef Model::iterator::difference_type difference_type;
-    typedef Model::iterator::value_type value_type;
-    typedef ConstraintI& reference;
-    typedef ConstraintI* pointer;
-    typedef std::forward_iterator_tag iterator_category;
-    
-    ConstraintIterator() {}
-    ConstraintIterator(const ConstraintIterator& vi) : _it(vi._it) {}
-    ConstraintIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
-      while (_it != _model->end() && (!(*_it)->isa<ConstraintI>() || (*_it)->removed())) {
-        ++_it;
-      }
-    }
-    ~ConstraintIterator() {}
-    
-    ConstraintIterator& operator=(const ConstraintIterator& vi) {
-      if (this != &vi) {
-        _it = vi._it;
-      }
-      return *this;
-    }
-    bool operator==(const ConstraintIterator& vi) const { return _it == vi._it; }
-    bool operator!=(const ConstraintIterator& vi) const { return _it != vi._it; }
-    ConstraintIterator& operator++() {
-      do {
-        ++_it;
-      } while (_it != _model->end() && (!(*_it)->isa<ConstraintI>() || (*_it)->removed()));
-      return *this;
-    }
-    
-    reference operator*() const { return *(*_it)->cast<ConstraintI>(); }
-    pointer operator->() const { return (*_it)->cast<ConstraintI>(); }
-  };
-
-  class FunctionIterator {
-    Model* _model;
-    Model::iterator _it;
-  public:
-    typedef Model::iterator::difference_type difference_type;
-    typedef Model::iterator::value_type value_type;
-    typedef FunctionI& reference;
-    typedef FunctionI* pointer;
-    typedef std::forward_iterator_tag iterator_category;
-    
-    FunctionIterator() {}
-    FunctionIterator(const FunctionIterator& vi) : _it(vi._it) {}
-    FunctionIterator(Model* model, const Model::iterator& it) : _model(model), _it(it) {
-      while (_it != _model->end() && (!(*_it)->isa<FunctionI>() || (*_it)->removed())) {
-        ++_it;
-      }
-    }
-    ~FunctionIterator() {}
-    
-    FunctionIterator& operator=(const FunctionIterator& vi) {
-      if (this != &vi) {
-        _it = vi._it;
-      }
-      return *this;
-    }
-    bool operator==(const FunctionIterator& vi) const { return _it == vi._it; }
-    bool operator!=(const FunctionIterator& vi) const { return _it != vi._it; }
-    FunctionIterator& operator++() {
-      do {
-        ++_it;
-      } while (_it != _model->end() && (!(*_it)->isa<FunctionI>() || (*_it)->removed()));
-      return *this;
-    }
-    
-    reference operator*() const { return *(*_it)->cast<FunctionI>(); }
-    pointer operator->() const { return (*_it)->cast<FunctionI>(); }
-  };
-
-  
-  class EnvI;
-  
-  /// Environment
-  class Env {
-  private:
-    EnvI* e;
-  public:
-    Env(Model* m=NULL, std::ostream& outstream = std::cout, std::ostream& errstream = std::cerr);
-    ~Env(void);
-    
-    Model* model(void);
-    void model(Model* m);
-    Model* flat(void);
-    void swap();
-    Model* output(void);
-    EnvI& envi(void);
-    const EnvI& envi(void) const;
-    std::ostream& dumpErrorStack(std::ostream& os);
-    const std::vector<std::string>& warnings(void);
-    void clearWarnings(void);
-    unsigned int maxCallStack(void) const;
-    std::ostream& evalOutput(std::ostream& os);
-  };
-
-  class CallStackItem {
-  public:
-    EnvI& env;
-    CallStackItem(EnvI& env0, Expression* e);
-    CallStackItem(EnvI& env0, Id* ident, IntVal i);
-    ~CallStackItem(void);
-  };
-
-  /// Visitor for model items
-  class ItemVisitor {
-  public:
-    /// Enter model
-    bool enterModel(Model* m) { return true; }
-    /// Enter item
-    bool enter(Item* m) { return true; }
-    /// Visit include item
-    void vIncludeI(IncludeI*) {}
-    /// Visit variable declaration
-    void vVarDeclI(VarDeclI*) {}
-    /// Visit assign item
-    void vAssignI(AssignI*) {}
-    /// Visit constraint item
-    void vConstraintI(ConstraintI*) {}
-    /// Visit solve item
-    void vSolveI(SolveI*) {}
-    /// Visit output item
-    void vOutputI(OutputI*) {}
-    /// Visit function item
-    void vFunctionI(FunctionI*) {}
-  };
-
-  /// Iterator over items in a model and all its included models
-  template<class I>
-  class ItemIter {
-  protected:
-    I& iter;
-  public:
-    ItemIter(I& iter0) : iter(iter0) {}
-    void run(Model* m) {
-      std::unordered_set<Model*> seen;
-      std::vector<Model*> models;
-      models.push_back(m);
-      seen.insert(m);
-      while (!models.empty()) {
-        Model* cm = models.back();
-        models.pop_back();
-        if (!iter.enterModel(cm))
+      std::vector<Model*> includedModels;
+      for (auto& i : *cm) {
+        if (i->removed()) {
           continue;
-        std::vector<Model*> includedModels;
-        for (unsigned int i=0; i<cm->size(); i++) {
-          if ((*cm)[i]->removed())
-            continue;
-          if (!iter.enter((*cm)[i]))
-            continue;
-          switch ((*cm)[i]->iid()) {
+        }
+        if (!_iter.enter(i)) {
+          continue;
+        }
+        switch (i->iid()) {
           case Item::II_INC:
-            if (seen.find((*cm)[i]->cast<IncludeI>()->m()) == seen.end()) {
-              includedModels.push_back((*cm)[i]->cast<IncludeI>()->m());
-              seen.insert((*cm)[i]->cast<IncludeI>()->m());
+            if (seen.find(i->cast<IncludeI>()->m()) == seen.end()) {
+              includedModels.push_back(i->cast<IncludeI>()->m());
+              seen.insert(i->cast<IncludeI>()->m());
             }
-            iter.vIncludeI((*cm)[i]->cast<IncludeI>());
+            _iter.vIncludeI(i->cast<IncludeI>());
             break;
           case Item::II_VD:
-            iter.vVarDeclI((*cm)[i]->cast<VarDeclI>());
+            _iter.vVarDeclI(i->cast<VarDeclI>());
             break;
           case Item::II_ASN:
-            iter.vAssignI((*cm)[i]->cast<AssignI>());
+            _iter.vAssignI(i->cast<AssignI>());
             break;
           case Item::II_CON:
-            iter.vConstraintI((*cm)[i]->cast<ConstraintI>());
+            _iter.vConstraintI(i->cast<ConstraintI>());
             break;
           case Item::II_SOL:
-            iter.vSolveI((*cm)[i]->cast<SolveI>());
+            _iter.vSolveI(i->cast<SolveI>());
             break;
           case Item::II_OUT:
-            iter.vOutputI((*cm)[i]->cast<OutputI>());
+            _iter.vOutputI(i->cast<OutputI>());
             break;
           case Item::II_FUN:
-            iter.vFunctionI((*cm)[i]->cast<FunctionI>());
-            break;      
-          }
-        }
-        for (unsigned int i=static_cast<unsigned int>(includedModels.size()); i--;) {
-          models.push_back(includedModels[i]);
+            _iter.vFunctionI(i->cast<FunctionI>());
+            break;
         }
       }
+      for (auto i = static_cast<unsigned int>(includedModels.size()); (i--) != 0U;) {
+        models.push_back(includedModels[i]);
+      }
     }
-  };
-  
-  /// Run iterator \a i over all items of model \a m
-  template<class I>
-  void iterItems(I& i, Model* m) {
-    ItemIter<I>(i).run(m);
   }
-  
+};
+
+/// Run iterator \a i over all items of model \a m
+template <class I>
+void iter_items(I& i, Model* m) {
+  ItemIter<I>(i).run(m);
 }
+
+}  // namespace MiniZinc

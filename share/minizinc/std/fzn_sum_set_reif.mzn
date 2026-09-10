@@ -1,3 +1,7 @@
-predicate fzn_sum_set_reif(array[int] of int: vs, array[int] of int: ws,
-                           var set of int: x, var int: s, var bool: b) =
-    b <-> s == sum(j in index_set(vs)) ( bool2int(j in x) * ws[j] );
+predicate fzn_sum_set_reif(
+  array [int] of int: values,
+  array [int] of int: weights,
+  var set of int: selected,
+  var int: total,
+  var bool: b,
+) = b <-> total == sum (j in index_set(values)) ((j in selected) * weights[j]);

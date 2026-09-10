@@ -20,7 +20,7 @@ class Unordered:
         try:
             for x in other:
                 items.remove(x)
-            return True
+            return len(items) == 0
         except ValueError:
             return False
 
@@ -36,8 +36,11 @@ class Approx:
         self.threshold = threshold
 
     def __eq__(self, other):
-        diff = abs(other - self.value)
-        return diff <= self.threshold
+        try:
+            diff = abs(float(other) - self.value)
+            return diff <= self.threshold
+        except (TypeError, ValueError):
+            return False
 
     def __repr__(self):
         return "Approx({})".format(self.value)

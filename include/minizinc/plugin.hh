@@ -13,114 +13,115 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#undef ERROR
 #else
 #include <dlfcn.h>
 #endif
 
-#include <vector>
-#include <string>
-#include <sstream>
-#include <stdlib.h>
-#include <minizinc/file_utils.hh>
 #include <minizinc/exception.hh>
+#include <minizinc/file_utils.hh>
 
-/// Convenience macro for loading symbols
-#define load_symbol(name) *(void**)(&name) = symbol(#name)
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector>
+
+/// Convenience macros for loading symbols
+#define load_symbol_dynamic(plugin, name) *(void**)(&(this->name)) = (plugin).symbol(#name)
+#define load_symbol_static(plugin, name) this->name = ::name
 
 namespace MiniZinc {
-  /// Base class for plugins loaded from DLLs
-  class Plugin {
-  public:
-    class PluginError : public Exception {
-    public:
-      /// Construct with message \a msg
-      PluginError(const std::string& msg) : Exception(msg) {}
-      /// Destructor
-      ~PluginError(void) throw() {}
-      /// Return description
-      virtual const char* what(void) const throw() {
-        return "MiniZinc: plugin loading error";
+/// Helper for loading DLLs
+class Plugin {
+public:
+  /// Load a plugin with given DLL path
+  Plugin(const std::string& file) {
+    if (!open(file)) {
+      throw PluginError("Failed to load plugin " + file);
+    }
+  }
+  /// Load a plugin by trying the given DLL file paths
+  Plugin(const std::vector<std::string>& files) {
+    for (const auto& file : files) {
+      if (open(file)) {
+        return;
       }
-    };
-
-    /// Load a plugin with given DLL path
-    Plugin(const std::string& file) {
-      if (MiniZinc::FileUtils::is_absolute(file)) {
-        open(file);
+    }
+    bool first = true;
+    std::stringstream ss;
+    ss << "Failed to load plugin. Tried ";
+    for (const auto& file : files) {
+      if (first) {
+        first = false;
       } else {
-        // TODO: this should probably check that there is no current file extension
-#ifdef _WIN32
-        open(file + ".dll");
-#elif __APPLE__
-        open(file + ".dylib");
-#else
-        open(file + ".so");
-#endif
+        ss << ", ";
       }
-      if (dll == nullptr)
-        throw PluginError("Failed to load plugin " + file);
+      ss << file;
     }
-    /// Load a plugin by trying the given DLL file paths
-    Plugin(const std::vector<std::string>& files) {
-      for (auto file : files) {
-        if (MiniZinc::FileUtils::is_absolute(file)) {
-          open(file);
-        } else {
-          // TODO: this should probably check that there is no current file extension
+    throw PluginError(ss.str());
+  }
+
+  ~Plugin() { close(); }
+
+  /// Get the path to the loaded DLL
+  const std::string& path() const { return _loaded; }
+
+  /// Load a symbol from this DLL
+  void* symbol(const char* name) {
+    void* ret;
 #ifdef _WIN32
-          open(file + ".dll");
+    ret = (void*)GetProcAddress((HMODULE)_dll, (LPCSTR)name);
 #else
-          open(file + ".so");
+    ret = dlsym(_dll, name);
 #endif
-        }
-        if (dll != nullptr)
-          return;
-      }
-      bool first = true;
-      std::stringstream ss;
-      ss << "Failed to load plugin. Tried ";
-      for (auto file : files) {
-        if (first)
-          first = false;
-        else
-          ss << ", ";
-        ss << file;
-      }
-      throw PluginError(ss.str());
+    if (ret == nullptr) {
+      throw PluginError(std::string("Failed to load symbol ") + name);
+    }
+    return ret;
+  }
+
+private:
+  void* _dll;
+  std::string _loaded;
+  bool open(const std::string& file) {
+#ifdef _WIN32
+    const std::string ext = ".dll";
+#elif __APPLE__
+    const std::string ext = ".dylib";
+#else
+    const std::string ext = ".so";
+#endif
+    bool hasExt =
+        file.size() >= ext.size() && file.compare(file.size() - ext.size(), ext.size(), ext) == 0;
+    auto path = (hasExt || MiniZinc::FileUtils::is_absolute(file)) ? file : (file + ext);
+#ifdef _WIN32
+    auto dir = MiniZinc::FileUtils::dir_name(path);
+    if (!dir.empty()) {
+      // Add the path with the DLL to the search path for dependency loading
+      SetDllDirectoryW(MiniZinc::FileUtils::utf8_to_wide(dir).c_str());
+    }
+    _dll = (void*)LoadLibrary((LPCSTR)path.c_str());
+    if (!dir.empty()) {
+      SetDllDirectoryW(nullptr);
+    }
+#else
+    _dll = dlopen(path.c_str(), RTLD_NOW);
+#endif
+    if (_dll != nullptr) {
+      _loaded = path;
+      return true;
     }
 
-    ~Plugin() {
-      close();
-    }
-  protected:
-    /// Load a symbol from this DLL
-    void* symbol(const char* name) {
-      void* ret;
+    return false;
+  }
+  void close() {
 #ifdef _WIN32
-      ret = (void*)GetProcAddress((HMODULE)dll, (LPCSTR)name);
+    FreeLibrary((HMODULE)_dll);
 #else
-      ret = dlsym(dll, name);
+    dlclose(_dll);
 #endif
-      if (ret == nullptr)
-        throw PluginError(std::string("Failed to load symbol ") + name);
-      return ret;
-    }
-  private:
-    void* dll;
-    void open(const std::string& file) {
-#ifdef _WIN32
-      dll = (void*)LoadLibrary((LPCSTR)file.c_str());
-#else
-      dll = dlopen(file.c_str(), RTLD_NOW);
-#endif
-    }
-    void close() {
-#ifdef _WIN32
-      FreeLibrary((HMODULE)dll);
-#else
-      dlclose(dll);
-#endif
-      dll = nullptr;
-    }
-  };
-}
+    _dll = nullptr;
+  }
+};
+
+}  // namespace MiniZinc

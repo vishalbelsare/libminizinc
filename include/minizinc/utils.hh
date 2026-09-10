@@ -11,190 +11,244 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <sstream>
-#include <ctime>
-#include <limits>
-#include <iomanip>
-#include <cassert>
-#include <chrono>
-#include <ratio>
-
-#include <minizinc/timer.hh>
 #include <minizinc/exception.hh>
+#include <minizinc/timer.hh>
 
-#ifdef MZN_HAS_LLROUND
+#include <cassert>
+#include <cerrno>
+#include <chrono>
 #include <cmath>
+#include <cstring>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <tuple>
+#include <vector>
+
 namespace MiniZinc {
-  inline
-  long long int round_to_longlong(double v) {
-    return ::llround(v);
-  }
-}
+
+inline long long int round_to_longlong(double v) { return ::llround(v); }
+
+int parse_int(const std::string& value);
+long parse_long(const std::string& value);
+unsigned long parse_unsigned_long(const std::string& value);
+unsigned int parse_unsigned_int(const std::string& value);
+int parse_int_option(const std::string& value, const std::string& option);
+long parse_long_option(const std::string& value, const std::string& option);
+unsigned long parse_unsigned_long_option(const std::string& value, const std::string& option);
+
+// #define MZN_PRINTATONCE_
+#ifdef MZN_PRINTATONCE_
+#define MZN_PRINT_SRCLOC(e1, e2)                                                            \
+  std::cerr << '\n'                                                                         \
+            << __FILE__ << ": " << __LINE__ << " (" << __func__ << "): not " << e1 << ":  " \
+            << std::flush;                                                                  \
+  std::cerr << e2 << std::endl
 #else
-namespace MiniZinc {
-  inline
-  long long int round_to_longlong(double v) {
-    return static_cast<long long int>(v < 0 ? v-0.5 : v+0.5);
-  }
+#define MZN_PRINT_SRCLOC(e1, e2)
+#endif
+#define MZN_ASSERT_HARD(c)                                      \
+  do {                                                          \
+    if (!(c)) { /* NOLINT(readability-simplify-boolean-expr) */ \
+      MZN_PRINT_SRCLOC(#c, "");                                 \
+      throw InternalError(#c);                                  \
+    }                                                           \
+  } while (0)
+#define MZN_ASSERT_HARD_MSG(c, e)                                                 \
+  do {                                                                            \
+    if (!(c)) { /* NOLINT(readability-simplify-boolean-expr) */                   \
+      MZN_PRINT_SRCLOC(#c, e);                                                    \
+      std::ostringstream oss;                                                     \
+      oss << "not " << #c << ":  " << e; /* NOLINT(bugprone-macro-parentheses) */ \
+      throw MiniZinc::InternalError(oss.str());                                   \
+    }                                                                             \
+  } while (0)
+
+inline bool beginswith(const std::string& s, const std::string& t) {
+  return s.compare(0, t.length(), t) == 0;
 }
-#endif
 
-namespace MiniZinc {
-  
-// #define __MZN_PRINTATONCE__
-#ifdef __MZN_PRINTATONCE__
-  #define __MZN_PRINT_SRCLOC(e1, e2) \
-    std::cerr << '\n' << __FILE__ << ": " << __LINE__ << " (" << __func__ \
-     << "): not " << e1 << ":  " << std::flush; \
-     std::cerr << e2 << std::endl
-#else
-  #define __MZN_PRINT_SRCLOC(e1, e2)
-#endif
-#define MZN_ASSERT_HARD( c ) \
-   do { if ( !(c) ) { __MZN_PRINT_SRCLOC( #c, "" ); throw InternalError( #c ); } } while (0)
-#define MZN_ASSERT_HARD_MSG( c, e ) \
-   do { if ( !(c) ) { __MZN_PRINT_SRCLOC( #c, e ); \
-     std::ostringstream oss; oss << "not " << #c << ":  " << e; \
-     throw MiniZinc::InternalError( oss.str() ); } } while (0)
-
-  inline bool beginswith(std::string s, std::string t) {
-    return s.compare(0, t.length(), t)==0;
-  }
-
-  inline void checkIOStatus( bool fOk, std::string msg, bool fHard=1 )
-  {
-    if ( !fOk ) {
+inline void check_io_status(bool fOk, const std::string& msg, bool fHard = true) {
+  if (!fOk) {
 #ifdef _MSC_VER
-      char errBuf[1024];
-      strerror_s(errBuf, sizeof(errBuf), errno);
+    char errBuf[1024];
+    strerror_s(errBuf, sizeof(errBuf), errno);
 #else
-      char* errBuf = strerror(errno);
+    char* errBuf = strerror(errno);
 #endif
-      std::cerr << "\n  " << msg
-        << ":   " << errBuf << "." << std::endl;
-      MZN_ASSERT_HARD_MSG ( !fHard, msg << ": " << errBuf );
-    }
+    std::cerr << "\n  " << msg << ":   " << errBuf << "." << std::endl;
+    MZN_ASSERT_HARD_MSG(!fHard, msg << ": " << errBuf);
   }
-  
-  template <class T> inline bool assignStr(T*, const std::string ) { return false; }
-  template<> inline bool assignStr(std::string* pS, const std::string s ) {
-    *pS = s;
-    return true;
+}
+
+template <class T>
+inline bool assign_string(T* /*t*/, const std::string& /*s*/) {
+  return false;
+}
+template <>
+inline bool assign_string(std::string* pS, const std::string& s) {
+  *pS = s;
+  return true;
+}
+
+/// A simple per-cmdline option parser
+class CLOParser {
+  int& _i;  // current item
+  std::vector<std::string>& _argv;
+
+public:
+  CLOParser(int& ii, std::vector<std::string>& av) : _i(ii), _argv(av) {}
+  template <class Value = int>
+  bool get(const char* names,           // space-separated option list
+           Value* pResult = nullptr,    // pointer to value storage
+           bool fValueOptional = false  // if pResult, for non-string values
+  ) {
+    return getOption(names, pResult, fValueOptional);
   }
-  
-  /// A simple per-cmdline option parser
-  class CLOParser {
-    int& i;              // current item
-    std::vector<std::string>& argv;
-    
-  public:
-    CLOParser( int& ii, std::vector<std::string>& av )
-      : i(ii), argv(av) { }
-    template <class Value=int>
-    inline bool get(  const char* names, // space-separated option list
-                      Value* pResult=nullptr, // pointer to value storage
-                      bool fValueOptional=false // if pResult, for non-string values
-                ) {
-      return getOption( names, pResult, fValueOptional );
-    }
-    template <class Value=int>
-    inline bool getOption(  const char* names, // space-separated option list
-                            Value* pResult=nullptr, // pointer to value storage
-                            bool fValueOptional=false // if pResult, for non-string values
-                ) {
-      assert(0 == strchr(names, ','));
-      assert(0 == strchr(names, ';'));
-      if( i>=argv.size() )
-        return false;
-      std::string arg( argv[i] );
-      /// Separate keywords
-      std::string keyword;
-      std::istringstream iss( names );
-      while ( iss >> keyword ) {
-        if ( ((2<keyword.size() || 0==pResult) && arg!=keyword) ||  // exact cmp
-          (0!=arg.compare( 0, keyword.size(), keyword )) )           // truncated cmp
-          continue;
-        /// Process it
-        bool combinedArg = false; // whether arg and value are combined in one string (like -Ggecode)
-        if ( keyword.size() < arg.size() ) {
-          if ( 0==pResult )
-            continue;
-          combinedArg = true;
-          arg.erase( 0, keyword.size() );
-        } else {
-          if ( 0==pResult )
-            return true;
-          i++;
-          if( i>=argv.size() ) {
-            --i;
-            return fValueOptional;
-          }
-          arg = argv[i];
-        }
-        assert( pResult );
-        if ( assignStr( pResult, arg ) ) 
-          return true;
-        std::istringstream iss( arg );
-        Value tmp;
-        if ( !( iss >> tmp ) ) {
-          if (!combinedArg)
-            --i;
-          if ( fValueOptional ) {
-            return true;
-          }
-          // Not print because another agent can handle this option
-//           cerr << "\nBad value for " << keyword << ": " << arg << endl;
-          return false;
-        }
-        *pResult = tmp;
-        return true;
-      }
+  template <class Value = int>
+  bool getOption(const char* names,           // space-separated option list
+                 Value* pResult = nullptr,    // pointer to value storage
+                 bool fValueOptional = false  // if pResult, for non-string values
+  ) {
+    assert(nullptr == strchr(names, ','));
+    assert(nullptr == strchr(names, ';'));
+    if (_i >= _argv.size()) {
       return false;
     }
-  };  // class CLOParser
-  
-  /// This class prints a value if non-0 and adds comma if not 1st time
-  class HadOne {
-    bool fHadOne=false;
-  public:
-    template <class N>
-    std::string operator()(const N& val, const char* descr=0) {
-      std::ostringstream oss;
-      if ( val ) {
-        if ( fHadOne )
-          oss << ", ";
-        fHadOne=true;
-        oss << val;
-        if ( descr )
-          oss << descr;
+    std::string arg(_argv[_i]);
+    /// Separate keywords
+    std::string keyword;
+    std::istringstream iss(names);
+    while (iss >> keyword) {
+      if (((2 < keyword.size() || nullptr == pResult) && arg != keyword) ||  // exact cmp
+          (0 != arg.compare(0, keyword.size(), keyword))) {                  // truncated cmp
+        continue;
       }
-      return oss.str();
+      /// Process it
+      bool combinedArg = false;  // whether arg and value are combined in one string (like -Ggecode)
+      if (keyword.size() < arg.size()) {
+        if (nullptr == pResult) {
+          continue;
+        }
+        combinedArg = true;
+        arg.erase(0, keyword.size());
+      } else {
+        if (nullptr == pResult) {
+          return true;
+        }
+        _i++;
+        if (_i >= _argv.size()) {
+          --_i;
+          return fValueOptional;
+        }
+        arg = _argv[_i];
+      }
+      assert(pResult);
+      if (assign_string(pResult, arg)) {
+        return true;
+      }
+      std::istringstream iss(arg);
+      Value tmp;
+      if (!(iss >> tmp)) {
+        if (!combinedArg) {
+          --_i;
+        }
+        return fValueOptional;
+      }
+      *pResult = tmp;
+      return true;
     }
-    void reset() { fHadOne=false; }
-    operator bool() const { return fHadOne; }
-    bool operator!() const { return !fHadOne; }
-  };
-  
-  /// Split a string into words
-  /// Add the words into the given vector
-  inline void split(const std::string& str, std::vector<std::string>& words) {
-    std::istringstream iss(str);
-    std::string buf;
-    while (iss) {
-      iss >> buf;
-      words.push_back(buf);
-    }
+    return false;
   }
-  
-  /// Puts the strings' c_str()s into the 2nd argument.
-  /// The latter is only valid as long as the former isn't changed.
-  inline void vecString2vecPChar(const std::vector<std::string>& vS, std::vector<const char*>& vPC) {
-    vPC.resize(vS.size());
-    for ( size_t i=0; i<vS.size(); ++i ) {
-      vPC[i] = vS[i].c_str();
-    }
-  }
+};  // class CLOParser
 
+/// Split a string into words
+/// Add the words into the given vector
+inline void split(const std::string& str, std::vector<std::string>& words) {
+  std::istringstream iss(str);
+  std::string buf;
+  while (iss) {
+    iss >> buf;
+    words.push_back(buf);
+  }
 }
+
+class Env;
+
+class OverflowHandler {
+private:
+  OverflowHandler();
+  struct OverflowInfo;
+  static std::unique_ptr<OverflowInfo> _ofi;
+
+public:
+#ifdef _WIN32
+  static void install();
+  static int filter(unsigned int code);
+  static void handle(unsigned int code);
+#else
+  static void install(const char** argv);
+#endif
+  static void setEnv(Env& env);
+  static void removeEnv();
+};
+
+class SemanticVersion {
+public:
+  unsigned int major = 0;
+  unsigned int minor = 0;
+  unsigned int patch = 0;
+  SemanticVersion(unsigned int major, unsigned int minor, unsigned int patch)
+      : major{major}, minor{minor}, patch{patch} {};
+  SemanticVersion(std::string version) {
+    auto parseComponent = [](const std::string& component) {
+      if (component.empty()) {
+        return 0U;
+      }
+      try {
+        return parse_unsigned_int(component);
+      } catch (const std::exception&) {
+        return 0U;
+      }
+    };
+    size_t begin = 0;
+    size_t end = version.find('.');
+    major = parseComponent(version.substr(begin, end - begin));
+    if (end == std::string::npos) {
+      return;
+    }
+    begin = end + 1;
+    end = version.find('.', begin);
+    minor = parseComponent(version.substr(begin, end - begin));
+    if (end == std::string::npos) {
+      return;
+    }
+    begin = end + 1;
+    end = version.find('.', begin);
+    patch = parseComponent(version.substr(begin, end - begin));
+  }
+  bool operator<(const SemanticVersion& other) const {
+    return std::tie(major, minor, patch) < std::tie(other.major, other.minor, other.patch);
+  }
+  bool operator<=(const SemanticVersion& other) const {
+    return std::tie(major, minor, patch) <= std::tie(other.major, other.minor, other.patch);
+  }
+  bool operator==(const SemanticVersion& other) const {
+    return std::tie(major, minor, patch) == std::tie(other.major, other.minor, other.patch);
+  }
+  friend std::ostream& operator<<(std::ostream& stream, const SemanticVersion& ver) {
+    stream << ver.major;
+    stream << '.';
+    stream << ver.minor;
+    stream << '.';
+    stream << ver.patch;
+    return stream;
+  };
+};
+
+}  // namespace MiniZinc

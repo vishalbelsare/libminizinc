@@ -15,49 +15,54 @@
 
 namespace MiniZinc {
 
-  class MZNSolverOptions : public SolverInstanceBase::Options {
-  public:
-    std::string mzn_solver;
-    std::vector<std::string> mzn_flags;
-    int numSols = 1;
-    bool allSols = false;
-    std::string parallel;
-    int mzn_time_limit_ms = 0;
-    int solver_time_limit_ms = 0;
-    bool mzn_sigint = false;
-    bool supports_t = false;
-    std::vector<MZNFZNSolverFlag> mzn_solver_flags;
-  };
-  
-  class MZNSolverInstance : public SolverInstanceBase {
-  private:
-    std::string _mzn_solver;
-  public:
-    MZNSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
-    
-    ~MZNSolverInstance(void);
+class MZNSolverOptions : public SolverInstanceBase::Options {
+public:
+  std::string mznSolver;
+  std::vector<std::string> mznFlags;
+  int numSols = 1;
+  bool allSols = false;
+  std::string parallel;
+  int solverTimeLimitMilliseconds = 0;
+  int cleanupTimeLimitMilliseconds = 1000;
+  bool mznSigint = false;
+  bool supportsT = false;
+  std::vector<MZNFZNSolverFlag> mznSolverFlags;
+};
 
-    Status next(void) {return SolverInstance::ERROR;}
+class MZNSolverInstance : public SolverInstanceBase {
+private:
+  std::string _mznSolver;
 
-    Status solve(void);
+public:
+  MZNSolverInstance(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
 
-    void processFlatZinc(void);
+  ~MZNSolverInstance() override;
 
-    void resetSolver(void);
-  };
+  Status next() override { return SolverInstance::ERROR; }
 
-  class MZN_SolverFactory: public SolverFactory {
-  protected:
-    virtual SolverInstanceBase* doCreateSI(Env& env, std::ostream& log, SolverInstanceBase::Options* opt);
-  public:
-    MZN_SolverFactory(void);
-    virtual SolverInstanceBase::Options* createOptions(void);
-    virtual std::string getDescription(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getVersion(SolverInstanceBase::Options* opt=NULL);
-    virtual std::string getId(void);
-    virtual bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv);
-    virtual void printHelp(std::ostream& os);
-    void setAcceptedFlags(SolverInstanceBase::Options* opt, const std::vector<MZNFZNSolverFlag>& flags);
-  };
+  Status solve() override;
 
-}
+  void processFlatZinc() override;
+
+  void resetSolver() override;
+};
+
+class MZNSolverFactory : public SolverFactory {
+protected:
+  SolverInstanceBase* doCreateSI(Env& env, std::ostream& log,
+                                 SolverInstanceBase::Options* opt) override;
+
+public:
+  MZNSolverFactory();
+  SolverInstanceBase::Options* createOptions() override;
+  std::string getDescription(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getVersion(SolverInstanceBase::Options* opt = nullptr) override;
+  std::string getId() override;
+  bool processOption(SolverInstanceBase::Options* opt, int& i, std::vector<std::string>& argv,
+                     const std::string& workingDir = std::string()) override;
+  void printHelp(std::ostream& os) override;
+  static void setAcceptedFlags(SolverInstanceBase::Options* opt,
+                               const std::vector<MZNFZNSolverFlag>& flags);
+};
+
+}  // namespace MiniZinc

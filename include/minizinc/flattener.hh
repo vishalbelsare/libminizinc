@@ -12,118 +12,156 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <ctime>
-#include <memory>
-#include <iomanip>
-
-#include <minizinc/model.hh>
-#include <minizinc/parser.hh>
-#include <minizinc/typecheck.hh>
+#include <minizinc/MIPdomains.hh>
 #include <minizinc/astexception.hh>
-
+#include <minizinc/builtins.hh>
+#include <minizinc/file_utils.hh>
 #include <minizinc/flatten.hh>
 #include <minizinc/flatten_internal.hh>  // temp., TODO
-#include <minizinc/MIPdomains.hh>
+#include <minizinc/model.hh>
 #include <minizinc/optimize.hh>
-#include <minizinc/builtins.hh>
-#include <minizinc/utils.hh>
-#include <minizinc/file_utils.hh>
+#include <minizinc/parser.hh>
+#include <minizinc/passes/compile_pass.hh>
 #include <minizinc/solver_instance.hh>
 #include <minizinc/timer.hh>
-#include <minizinc/options.hh>
+#include <minizinc/typecheck.hh>
+#include <minizinc/utils.hh>
 
-#include <minizinc/passes/compile_pass.hh>
+#include <atomic>
+#include <ctime>
+#include <iomanip>
+#include <memory>
+#include <string>
+#include <vector>
 #ifdef HAS_GECODE
 #include <minizinc/passes/gecode_pass.hh>
 #endif
 
 namespace MiniZinc {
-  
-  class Flattener {
-  private:
-    std::unique_ptr<Env>   pEnv;
-    std::ostream& os;
-    std::ostream& log;
-  public:
-    Flattener(std::ostream& os, std::ostream& log, const std::string& stdlibDir);
-    ~Flattener();
-    bool processOption(int& i, std::vector<std::string>& argv);
-    void printVersion(std::ostream& );
-    void printHelp(std::ostream& );
 
-    void flatten(const std::string& modelString = std::string(), const std::string& modelName = std::string("stdin"));
-    void printStatistics(std::ostream& );
-    
-    void set_flag_verbose(bool f) { flag_verbose = f; }
-    bool get_flag_verbose() const { return flag_verbose; }
-    void set_flag_statistics(bool f) { flag_statistics = f; }
-    bool get_flag_statistics() const { return flag_statistics; }
-    void set_flag_timelimit(unsigned long long int t) { fopts.timeout = t; }
-    unsigned long long int get_flag_timelimit(void) { return fopts.timeout; }
-    void set_flag_output_by_default(bool f) { fOutputByDefault = f; }
-    Env* getEnv() const { assert(pEnv.get()); return pEnv.get(); }
-    bool hasInputFiles(void) const { return !filenames.empty() || flag_stdinInput || !flag_solution_check_model.empty(); }
-    
-    SolverInstance::Status status = SolverInstance::UNKNOWN;
-    
-  private:
-    Env* multiPassFlatten(const std::vector<std::unique_ptr<Pass> >& passes);
+class Flattener {
+private:
+  std::unique_ptr<Env> _pEnv;
+  std::ostream& _os;
+  std::ostream& _log;
 
-    bool fOutputByDefault = false;      // if the class is used in mzn2fzn, write .fzn+.ozn by default
-    std::vector<std::string> filenames;
-    std::vector<std::string> datafiles;
-    std::vector<std::string> includePaths;
-    bool is_flatzinc = false;
+public:
+  Flattener(std::ostream& os, std::ostream& log, std::string stdlibDir);
+  ~Flattener();
+  bool processOption(int& i, std::vector<std::string>& argv,
+                     const std::string& workingDir = std::string());
+  static void printVersion(std::ostream& os);
+  void printHelp(std::ostream& os) const;
 
-    bool flag_ignoreStdlib = false;
-    bool flag_typecheck = true;
-    bool flag_verbose = false;
-    bool flag_newfzn = false;
-    bool flag_optimize = true;
-    bool flag_chain_compression = true;
-    bool flag_werror = false;
-    bool flag_only_range_domains = false;
-    bool flag_allow_unbounded_vars = false;
-    bool flag_noMIPdomains = false;
-    int  opt_MIPDmaxIntvEE = 0;
-    double opt_MIPDmaxDensEE = 0.0;
-    bool flag_statistics = false;
-    bool flag_stdinInput = false;
-    bool flag_allow_multi_assign = false;
+  void flatten(const std::string& modelString = std::string(),
+               const std::string& modelName = std::string("stdin"));
+  void printStatistics(std::ostream& os);
 
-    bool flag_gecode = false;
-    bool flag_two_pass = false;
-    bool flag_sac = false;
-    bool flag_shave = false;
-    unsigned int flag_pre_passes = 1;
+  void cancel() {
+    // Remembered as well as forwarded: the timeout thread can fire before the
+    // environment exists, and the cancellation must not be lost then
+    _cancelled = true;
+    if (_pEnv != nullptr) {
+      _pEnv->envi().cancel();
+    }
+  }
+  void setFlagVerbose(bool f) { _flags.verbose = f; }
+  bool getFlagVerbose() const { return _flags.verbose; }
+  void setFlagStatistics(bool f) { _flags.statistics = f; }
+  bool getFlagStatistics() const { return _flags.statistics; }
+  void setFlagEncapsulateJSON(bool f) { _flags.encapsulateJSON = f; }
+  bool getFlagEncapsulateJSON() const { return _flags.encapsulateJSON; }
+  void setRandomSeed(long unsigned int r) { _fopts.randomSeed = r; }
+  void setFlagOutputByDefault(bool f) { _fOutputByDefault = f; }
+  void setFlagOutputJSON(bool f) {
+    _flags.fznFormat = f ? FlattenerFlags::FF_JSON : FlattenerFlags::FF_FZN;
+  }
+  void setCmdLineStr(std::string&& cmdline) { _cmdlineStr = std::move(cmdline); }
+  Env* getEnv() const {
+    assert(_pEnv.get());
+    return _pEnv.get();
+  }
+  bool hasInputFiles() const {
+    return !_filenames.empty() || _flags.stdinInput || !_flagSolutionCheckModel.empty();
+  }
 
-    std::string std_lib_dir;
-    std::string globals_dir;
+  SolverInstance::Status status = SolverInstance::UNKNOWN;
 
-    bool flag_no_output_ozn = false;
-    std::string flag_output_base;
-    std::string flag_output_fzn;
-    std::string flag_output_ozn;
-    std::string flag_output_paths;
-    bool flag_keep_mzn_paths = false;
-    bool flag_output_fzn_stdout = false;
-    bool flag_output_ozn_stdout = false;
-    bool flag_output_paths_stdout = false;
-    bool flag_instance_check_only = false;
-    bool flag_model_check_only = false;
-    bool flag_model_interface_only = false;
-    bool flag_model_types_only = false;
-    FlatteningOptions::OutputMode flag_output_mode = FlatteningOptions::OUTPUT_ITEM;
-    bool flag_output_objective = false;
-    bool flag_output_output_item = false;
-    std::string flag_solution_check_model;
-    bool flag_compile_solution_check_model = false;
-    FlatteningOptions fopts;
+private:
+  Env* multiPassFlatten(const std::vector<std::unique_ptr<Pass> >& passes);
 
-    Timer starttime;
+  bool _fOutputByDefault = false;  // if the class is used in mzn2fzn, write .fzn+.ozn by default
+  std::vector<std::string> _filenames;
+  std::vector<std::string> _datafiles;
+  std::vector<std::string> _includePaths;
+  bool _isFlatzinc = false;
 
-  };
+  struct FlattenerFlags {
+    bool typecheck = true;
+    bool verbose = false;
+    bool newfzn = false;
+    bool optimize = true;
+    bool chainCompression = true;
+    bool werror = false;
+    bool warnNonAuthoritativeNames = false;
+    bool onlyRangeDomains = false;
+    bool allowUnboundedVars = false;
+    bool noMIPdomains = false;
+    bool statistics = false;
+    bool stdinInput = false;
+    bool allowMultiAssign = false;
+    bool gecode = false;
+    bool twoPass = false;
+    bool sac = false;
+    bool shave = false;
+    enum FznFormat { FF_FZN, FF_JSON };
+    FznFormat fznFormat = FF_FZN;
+    bool noOutputOzn = false;
+    bool keepMznPaths = false;
+    bool outputFznStdout = false;
+    bool outputOznStdout = false;
+    bool outputPathsStdout = false;
+    bool instanceCheckOnly = false;
+    bool modelCheckOnly = false;
+    bool modelInterfaceOnly = false;
+    bool modelTypesOnly = false;
+    bool outputObjective = false;
+    bool outputOutputItem = false;
+    bool compileSolutionCheckModel = false;
+    bool encapsulateJSON = false;
+    bool ignoreStdlib = false;
+  } _flags;
 
-}
+  int _optMIPDmaxIntvEE = 0;
+  double _optMIPDmaxDensEE = 0.0;
+
+  unsigned int _flagPrePasses = 1;
+
+  /// Set when cancel() is called, possibly before the environment exists
+  std::atomic<bool> _cancelled{false};
+
+  std::string _stdLibDir;
+  std::vector<std::string> _globalsDirs;
+  /// True if the globals directories were given on the command line, in which
+  /// case they take precedence over those from the solver configuration
+  bool _globalsDirsFromCli = false;
+
+  /// Resolve a -G argument to an absolute path (a directory or a library bundle)
+  std::string resolveGlobalsDir(const std::string& g, const std::string& workingDir) const;
+  /// Include path for the library \a name shipped in the standard library
+  /// directory, preferring a library bundle over the directory
+  std::string libraryIncludePath(const std::string& name) const;
+  std::string _cmdlineStr;
+
+  std::string _flagOutputBase;
+  std::string _flagOutputFzn;
+  std::string _flagOutputOzn;
+  std::string _flagOutputPaths;
+  FlatteningOptions::OutputMode _flagOutputMode = FlatteningOptions::OUTPUT_ITEM;
+  std::string _flagSolutionCheckModel;
+  FlatteningOptions _fopts;
+
+  Timer _starttime;
+};
+
+}  // namespace MiniZinc

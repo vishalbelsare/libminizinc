@@ -14,28 +14,34 @@
 #include <minizinc/flatten_internal.hh>
 
 namespace MiniZinc {
-  void addPathAnnotation(EnvI& env, Expression* e);
-  void addCtxAnn(VarDecl* vd, BCtx& c);
-  bool istrue(EnvI& env, Expression* e);
-  bool isfalse(EnvI& env, Expression* e);
-  Expression* createDummyValue(EnvI& env, const Type& t);
-  TypeInst* eval_typeinst(EnvI& env, VarDecl* vd);
+void add_path_annotation(EnvI& env, Expression* e);
+bool istrue(EnvI& env, Expression* e);
+bool isfalse(EnvI& env, Expression* e);
+Expression* create_dummy_value(EnvI& env, const Type& t);
+TypeInst* eval_typeinst(EnvI& env, const Ctx& ctx, VarDecl* vd);
 
-  KeepAlive bind(EnvI& env, Ctx ctx, VarDecl* vd, Expression* e);
-  KeepAlive conj(EnvI& env,VarDecl* b,Ctx ctx,const std::vector<EE>& e);
+KeepAlive bind(EnvI& env, Ctx ctx, VarDecl* vd, Expression* e);
+KeepAlive conj(EnvI& env, VarDecl* b, const Ctx& ctx, const std::vector<EE>& e);
 
-  VarDecl* newVarDecl(EnvI& env, Ctx ctx, TypeInst* ti, Id* origId, VarDecl* origVd, Expression* rhs);
+void flatten_vardecl_annotations(EnvI& env, VarDecl* origVd, VarDeclI* vdi, VarDecl* toAnnotate);
 
-  KeepAlive flat_cv_exp(EnvI& env, Ctx ctx, Expression* e);
+VarDecl* new_vardecl(EnvI& env, const Ctx& ctx, TypeInst* ti, Id* origId, VarDecl* origVd,
+                     Expression* rhs, bool flattenAnnotations = true);
 
-  void makeDefinedVar(VarDecl* vd, Call* c);
-  void checkIndexSets(EnvI& env, VarDecl* vd, Expression* e);
+KeepAlive flat_cv_exp(EnvI& env, Ctx ctx, Expression* e);
 
-  class CallArgItem {
-  public:
-    EnvI& env;
-    CallArgItem(EnvI& env0);
-    ~CallArgItem(void);
-  };
+void make_defined_var(EnvI& env, VarDecl* vd, Call* c);
+void check_index_sets(EnvI& env, VarDecl* vd, Expression* e, bool isArg = false);
+/// Create a domain constraint that enforces that `expr` falls within `dom`
+///
+/// This function might return nullptr if no constraint is required
+Expression* mk_domain_constraint(EnvI& env, Expression* expr, Expression* dom);
 
-}
+class CallArgItem {
+public:
+  EnvI& env;
+  CallArgItem(EnvI& env0);
+  ~CallArgItem();
+};
+
+}  // namespace MiniZinc

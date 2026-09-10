@@ -1,25 +1,93 @@
-include "fzn_count_neq_par.mzn";
 include "fzn_count_neq.mzn";
-include "fzn_count_neq_par_reif.mzn";
 include "fzn_count_neq_reif.mzn";
+include "fzn_count_neq_bool.mzn";
+include "fzn_count_neq_bool_reif.mzn";
+include "fzn_count_neq_float.mzn";
+include "fzn_count_neq_float_reif.mzn";
+include "fzn_count_neq_set.mzn";
+include "fzn_count_neq_set_reif.mzn";
+include "fzn_count_neq_par.mzn";
+include "fzn_count_neq_par_reif.mzn";
+include "fzn_count_neq_bool_par.mzn";
+include "fzn_count_neq_bool_par_reif.mzn";
+include "fzn_count_neq_float_par.mzn";
+include "fzn_count_neq_float_par_reif.mzn";
+include "fzn_count_neq_set_par.mzn";
+include "fzn_count_neq_set_par_reif.mzn";
+
+predicate fzn_count_neq(array [int] of var int: xs, var int: value, var int: n);
+predicate fzn_count_neq_bool(array [int] of var bool: xs, var bool: value, var int: n);
+predicate fzn_count_neq_bool_par(array [int] of var bool: xs, bool: value, int: n);
+predicate fzn_count_neq_float(array [int] of var float: xs, var float: value, var int: n);
+predicate fzn_count_neq_float_par(array [int] of var float: xs, float: value, int: n);
+predicate fzn_count_neq_par(array [int] of var int: xs, int: value, int: n);
+predicate fzn_count_neq_set(array [int] of var set of int: xs, var set of int: value, var int: n);
+predicate fzn_count_neq_set_par(array [int] of var set of int: xs, set of int: value, int: n);
 
 /** @group globals.counting
-  Constrains \a c to be not equal to the number of occurrences
-  of \a y in \a x. 
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
 */
-predicate count_neq(array[int] of var int: x, var int: y, var int: c) =
-    fzn_count_neq(x,y,c);
+predicate count_neq(array [$X] of var $$E: xs, var $$E: value, var int: n) =
+  fzn_count_neq(enum2int(array1d(xs)), enum2int(value), n);
 
 /** @group globals.counting
-  Constrains \a c to be not equal to the number of occurrences
-  of \a y in \a x. 
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
 */
-predicate count_neq(array[int] of var int: x, int: y, int: c) =
-    fzn_count_neq_par(x,y,c);
+predicate count_neq(array [$X] of var bool: xs, var bool: value, var int: n) =
+  fzn_count_neq_bool(array1d(xs), value, n);
 
-predicate count_neq_reif(array[int] of var int: x, var int: y, var int: c, var bool: b) =
-    fzn_count_neq_reif(x,y,c,b);
-predicate count_neq_reif(array[int] of var int: x, int: y, int: c, var bool: b) =
-    fzn_count_neq_par_reif(x,y,c,b);
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var float: xs, var float: value, var int: n) =
+  fzn_count_neq_float(array1d(xs), value, n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var set of $$E: xs, var set of $$E: value, var int: n) =
+  fzn_count_neq_set(enum2int(array1d(xs)), enum2int(value), n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var opt $$E: xs, var $$E: value, var int: n) =
+  let {
+    % Set <> to something not value
+    int: def = if 0 in enum2int(dom(value)) then enum2int(lb(value)) - 1 else 0 endif;
+  } in count_neq([i default to_enum_internal(enum_of(value), def) | i in xs], value, n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var $$E: xs, $$E: value, int: n) =
+  fzn_count_neq_par(enum2int(array1d(xs)), enum2int(value), n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var bool: xs, bool: value, int: n) =
+  fzn_count_neq_bool_par(array1d(xs), value, n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var float: xs, float: value, int: n) =
+  fzn_count_neq_float_par(array1d(xs), value, n);
+
+/** @group globals.counting
+  Constrains \a n to be not equal to the number of occurrences
+  of \a value in \a xs.
+*/
+predicate count_neq(array [$X] of var set of $$E: xs, set of $$E: value, int: n) =
+  fzn_count_neq_set_par(enum2int(array1d(xs)), enum2int(value), n);
 
 %-----------------------------------------------------------------------------%

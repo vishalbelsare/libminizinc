@@ -1,19 +1,16 @@
-include "fzn_global_cardinality_low_up_closed.mzn";
-include "fzn_global_cardinality_low_up_closed_reif.mzn";
+include "global_cardinality_closed.mzn";
 
-/** @group globals.counting
-  Requires that for all \p i, the value \a cover[\p i] appears at least \a lbound[\p i]
-  and at most \a ubound[\p i] times in the array \a x.
+/**  @group globals.deprecated
+  Requires that for all \p i, the value \a cover[\p i] appears at least \a lower_bound[\p i]
+  and at most \a upper_bound[\p i] times in the array \a x.
 
   The elements of \a x must take their values from \a cover.
+
+  This constraint is deprecated. Use global_cardinality_closed(x, cover, lower_bound, upper_bound) instead.
 */
-predicate global_cardinality_low_up_closed(array[int] of var int: x,
-                                           array[int] of int: cover,
-                                           array[int] of int: lbound,
-                                           array[int] of int: ubound) =
-  assert(
-   index_set(cover) = index_set(lbound) /\ index_set(cover) = index_set(ubound),
-   "global_cardinality_low_up_closed: " ++
-     "cover, lbound and ubound must have identical index sets",
-   fzn_global_cardinality_low_up_closed(x, cover, lbound, ubound)
-  );
+predicate global_cardinality_low_up_closed(
+  array [$X] of var int: x,
+  array [$Y] of int: cover,
+  array [$Y] of int: lower_bound,
+  array [$Y] of int: upper_bound,
+) = global_cardinality_closed(x, cover, lower_bound, upper_bound);

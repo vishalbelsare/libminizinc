@@ -1,11 +1,12 @@
+include "among_fn.mzn";
+
 include "fzn_among.mzn";
 include "fzn_among_reif.mzn";
 
-/**  @group globals.counting
-  Requires exactly \a n variables in \a x to take one of the values in \a v.
-*/
-predicate among(var int: n, array[int] of var int: x, set of int: v) =
-    fzn_among(n, x, v);
+predicate fzn_among(var int: n, array [int] of var int: xs, set of int: values);
 
-predicate among_reif(var int: n, array[int] of var int: x, set of int: v, var bool: b) =
-    fzn_among_reif(n, x, v, b);
+/**  @group globals.counting
+  Requires exactly \a n variables in \a xs to take one of the values in \a values.
+*/
+predicate among(var int: n, array [$X] of var $$E: xs, set of $$E: values) =
+  fzn_among(n, enum2int(array1d(xs)), enum2int(values));

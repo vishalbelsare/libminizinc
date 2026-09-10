@@ -12,44 +12,39 @@
 #pragma once
 
 #include <minizinc/flatten.hh>
-#include <minizinc/options.hh>
 
 namespace MiniZinc {
 
-  struct CompilePassFlags {
-    bool noMIPdomains;
-    bool verbose;
-    bool statistics;
-    bool optimize;
-    bool chain_compression;
-    bool newfzn;
-    bool werror;
-    bool model_check_only;
-    bool model_interface_only;
-    bool allow_multi_assign;
-  };
+struct CompilePassFlags {
+  bool noMIPdomains;
+  bool verbose;
+  bool statistics;
+  bool optimize;
+  bool chainCompression;
+  bool newfzn;
+  bool werror;
+  bool modelCheckOnly;
+  bool modelInterfaceOnly;
+  bool allowMultiAssign;
+};
 
-  class CompilePass : public Pass {
-    private:
-      Env* env;
-      FlatteningOptions fopts;
-      CompilePassFlags compflags;
-      std::string library;
-      std::vector<std::string> includePaths;
-      bool change_library;
-      bool ignore_unknown_ids;
+class CompilePass : public Pass {
+private:
+  Env* _env;
+  FlatteningOptions _fopts;
+  CompilePassFlags _compflags;
+  std::vector<std::string> _library;
+  std::vector<std::string> _includePaths;
+  bool _changeLibrary;
+  bool _ignoreUnknownIds;
 
-    public:
-      CompilePass(Env* e,
-          FlatteningOptions& opts,
-          CompilePassFlags& cflags,
-          std::string globals_library,
-          std::vector<std::string> include_paths,
-          bool change_lib,
-          bool ignore_unknown);
+public:
+  CompilePass(Env* e, FlatteningOptions& opts, CompilePassFlags& cflags,
+              std::vector<std::string> globals_library, std::vector<std::string> include_paths,
+              bool change_lib, bool ignore_unknown);
 
-      Env* run(Env* env, std::ostream& log);
-      ~CompilePass();
-  };
+  Env* run(Env* store, std::ostream& log) override;
+  ~CompilePass() override;
+};
 
-}
+}  // namespace MiniZinc

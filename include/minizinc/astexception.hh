@@ -11,75 +11,146 @@
 
 #pragma once
 
-#include <minizinc/exception.hh>
 #include <minizinc/ast.hh>
+#include <minizinc/exception.hh>
+#include <minizinc/gc.hh>
 #include <minizinc/model.hh>
+#include <minizinc/stackdump.hh>
+
+#include <memory>
 #include <string>
 
 namespace MiniZinc {
-  
-  class SyntaxError : public Exception {
-  protected:
-    Location _loc;
-  public:
-    SyntaxError(const Location& loc, const std::string& msg)
-    : Exception(msg), _loc(loc) {}
-    virtual ~SyntaxError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: syntax error";
-    }
-    const Location& loc(void) const { return _loc; }
-  };
 
-  class LocationException : public Exception {
-  protected:
-    Location _loc;
-  public:
-    LocationException(EnvI& env, const Location& loc, const std::string& msg);
-    virtual ~LocationException(void) throw() {}
-    const Location& loc(void) const { return _loc; }
-  };
+class CyclicIncludeError : public Exception, public GCMarker {
+protected:
+  std::shared_ptr<const std::vector<ASTString>> _cycle;
 
-  class TypeError : public LocationException {
-  public:
-    TypeError(EnvI& env, const Location& loc, const std::string& msg)
-      : LocationException(env,loc,msg) {}
-    ~TypeError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: type error";
+  void mark() override {
+    for (auto s : *_cycle) {
+      s.mark();
     }
-  };
+  }
 
-  class EvalError : public LocationException {
-  public:
-    EvalError(EnvI& env, const Location& loc, const std::string& msg)
-      : LocationException(env,loc,msg) {}
-    EvalError(EnvI& env, const Location& loc, const std::string& msg, const ASTString& name)
-      : LocationException(env,loc,msg+" '"+name.str()+"'") {}
-    ~EvalError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: evaluation error";
-    }
-  };
+public:
+  CyclicIncludeError(std::vector<ASTString> cycle)
+      : Exception(""), _cycle(std::make_shared<const std::vector<ASTString>>(std::move(cycle))) {}
+  ~CyclicIncludeError() throw() override {}
+  const char* what() const throw() override { return "cyclic include error"; }
 
-  class ModelInconsistent : public LocationException {
-  public:
-    ModelInconsistent(EnvI& env, const Location& loc, const std::string& msg="")
-      : LocationException(env,loc,"model inconsistency detected"
-                          + (msg.empty() ? msg : ":  ") + msg) {}
-    ~ModelInconsistent(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: warning";
-    }
-  };
+  void print(std::ostream& os) const override;
+  void json(std::ostream& os) const override;
+};
 
-  class ResultUndefinedError : public LocationException {
-  public:
-    ResultUndefinedError(EnvI& env, const Location& loc, const std::string& msg);
-    ~ResultUndefinedError(void) throw() {}
-    virtual const char* what(void) const throw() {
-      return "MiniZinc: result of evaluation is undefined";
+class LocationException : public Exception, public GCMarker {
+protected:
+  std::shared_ptr<StackDump> _stack;
+  Location _loc;
+  bool _dumpStack = false;
+
+  void mark() override {
+    _loc.mark();
+    _stack->mark();
+  }
+
+public:
+  LocationException(const Location& loc, const std::string& msg);
+  LocationException(EnvI& env, const Location& loc, const std::string& msg);
+  ~LocationException() throw() override {}
+  const Location& loc() const { return _loc; }
+
+  bool dumpStack() const { return _dumpStack; }
+  void dumpStack(bool dump) { _dumpStack = dump; }
+
+  void print(std::ostream& os) const override;
+  void json(std::ostream& os) const override;
+};
+
+class SyntaxError : public LocationException {
+protected:
+  std::shared_ptr<const std::string> _currentLine;
+  std::shared_ptr<const std::vector<ASTString>> _includeStack;
+
+  void mark() override {
+    LocationException::mark();
+    for (auto s : *_includeStack) {
+      s.mark();
     }
-  };
-  
-}
+  }
+
+public:
+  SyntaxError(const Location& loc, const std::string& msg)
+      : LocationException(loc, msg),
+        _currentLine(std::make_shared<const std::string>()),
+        _includeStack(std::make_shared<const std::vector<ASTString>>()) {}
+  SyntaxError(const Location& loc, std::string currentLine, std::vector<ASTString> includeStack,
+              const std::string& msg)
+      : LocationException(loc, msg),
+        _currentLine(std::make_shared<const std::string>(std::move(currentLine))),
+        _includeStack(std::make_shared<const std::vector<ASTString>>(std::move(includeStack))) {}
+  ~SyntaxError() throw() override {}
+  const char* what() const throw() override { return "syntax error"; }
+
+  void print(std::ostream& os) const override;
+  void json(std::ostream& os) const override;
+};
+
+class IncludeError : public LocationException {
+public:
+  IncludeError(EnvI& env, const Location& loc, const std::string& msg)
+      : LocationException(env, loc, msg) {}
+  ~IncludeError() throw() override {}
+  const char* what() const throw() override { return "include error"; }
+};
+
+class TypeError : public LocationException {
+public:
+  TypeError(EnvI& env, const Location& loc, const std::string& msg)
+      : LocationException(env, loc, msg) {}
+  ~TypeError() throw() override {}
+  const char* what() const throw() override { return "type error"; }
+};
+
+class EvalError : public LocationException {
+public:
+  EvalError(EnvI& env, const Location& loc, const std::string& msg)
+      : LocationException(env, loc, msg) {}
+  EvalError(EnvI& env, const Location& loc, const std::string& msg, const ASTString& name)
+      : LocationException(env, loc, "") {
+    std::ostringstream ss;
+    ss << msg << " '" << name << "'";
+    setMsg(ss.str());
+  }
+  ~EvalError() throw() override {}
+  const char* what() const throw() override { return "evaluation error"; }
+};
+
+class AssertionError : public EvalError {
+public:
+  AssertionError(EnvI& env, const Location& loc, const std::string& msg)
+      : EvalError(env, loc, msg) {}
+  ~AssertionError() throw() override {}
+  const char* what() const throw() override { return "assertion failed"; }
+};
+
+class ModelInconsistent : public LocationException {
+public:
+  ModelInconsistent(EnvI& env, const Location& loc, const std::string& msg = "")
+      : LocationException(env, loc,
+                          "model inconsistency detected" + (msg.empty() ? msg : ":  ") + msg) {}
+  ~ModelInconsistent() throw() override {}
+  const char* what() const throw() override { return "warning"; }
+};
+
+class ResultUndefinedError : public LocationException {
+private:
+  int _warningIdx;
+
+public:
+  ResultUndefinedError(EnvI& env, const Location& loc, const std::string& msg);
+  ~ResultUndefinedError() throw() override {}
+  const char* what() const throw() override { return "result of evaluation is undefined"; }
+  int warningIdx() const { return _warningIdx; }
+};
+
+}  // namespace MiniZinc

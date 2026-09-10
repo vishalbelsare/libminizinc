@@ -1,7 +1,9 @@
 include "span.mzn";
 
-predicate fzn_alternative_reif(var opt int: s0, var int: d0,
-                      array[int] of var opt int: s,
-                      array[int] of var int: d, var bool: b) =
-          b <-> ( sum(i in index_set(s))(bool2int(occurs(s[i]))) <= 1 /\
-                  span(s0,d0,s,d) );
+predicate fzn_alternative_reif(
+  var opt int: span_start,
+  var int: span_duration,
+  array [int] of var opt int: start,
+  array [int] of var int: duration,
+  var bool: b,
+) = b <-> (sum (i in index_set(start)) (occurs(start[i])) = occurs(span_start) /\ span(span_start, span_duration, start, duration));

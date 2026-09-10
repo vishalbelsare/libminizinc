@@ -12,178 +12,232 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <set>
-#include <ctime>
-#include <memory>
-#include <iomanip>
-#include <unordered_map>
-
-#include <minizinc/model.hh>
-#include <minizinc/parser.hh>
-#include <minizinc/typecheck.hh>
 #include <minizinc/astexception.hh>
-
+#include <minizinc/builtins.hh>
+#include <minizinc/file_utils.hh>
 #include <minizinc/flatten.hh>
 #include <minizinc/flatten_internal.hh>  // temp., TODO
+#include <minizinc/model.hh>
 #include <minizinc/optimize.hh>
-#include <minizinc/builtins.hh>
-#include <minizinc/utils.hh>
-#include <minizinc/file_utils.hh>
+#include <minizinc/parser.hh>
 #include <minizinc/solver_instance.hh>
+#include <minizinc/typecheck.hh>
+#include <minizinc/utils.hh>
+
+#include <ctime>
+#include <iomanip>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace MiniZinc {
-  
-  /// Class handling fzn solver's output
-  /// could facilitate exhange of raw/final outputs in a portfolio
-  class Solns2Out {
-  protected:
-    std::unique_ptr<Env> pEnv_guard;
-    Env* pEnv=0;
-    Model* pOutput=0;
 
-    typedef std::pair<VarDecl*, KeepAlive> DE;
-    std::unordered_map<std::string, DE> declmap;
-    Expression* outputExpr = NULL;
-    std::string checkerModel;
-    std::string statisticsCheckerModel;
-    bool fNewSol2Print = false;     // should be set for evalOutput to work
-    
-  public:
-    std::string solution;
-    std::string comments;
-    int nLinesIgnore = 0;
-    
-    struct Options {
-      std::string flag_output_file;
-      bool flag_output_comments = true;
-      bool flag_output_flush = true;
-      bool flag_output_time = false;
-      int flag_ignore_lines = 0;
-      bool flag_unique = 1;
-      bool flag_canonicalize = 0;
-      bool flag_standaloneSolns2Out = false;
-      std::string flag_output_noncanonical;
-      std::string flag_output_raw;
-      int flag_number_output = -1;
-      /// Default values, also used for input
-      const char* const solution_separator_00 = "----------";
-      const char* const unsatisfiable_msg_00  = "=====UNSATISFIABLE=====";
-      const char* const unbounded_msg_00      = "=====UNBOUNDED=====";
-      const char* const unsatorunbnd_msg_00   = "=====UNSATorUNBOUNDED=====";
-      const char* const unknown_msg_00        = "=====UNKNOWN=====";
-      const char* const error_msg_00          = "=====ERROR=====";
-      const char* const search_complete_msg_00= "==========";
-      /// Output values
-      std::string solution_separator = solution_separator_00;
-      std::string solution_comma     = "";
-      std::string unsatisfiable_msg  = unsatisfiable_msg_00;
-      std::string unbounded_msg      = unbounded_msg_00;
-      std::string unsatorunbnd_msg   = unsatorunbnd_msg_00;
-      std::string unknown_msg        = unknown_msg_00;
-      std::string error_msg          = error_msg_00;
-      std::string search_complete_msg= search_complete_msg_00;
-    } _opt;
+/// Class handling fzn solver's output
+/// could facilitate exhange of raw/final outputs in a portfolio
+class Solns2Out {
+protected:
+  std::unique_ptr<Env> _envGuard;
+  Env* _env = nullptr;
+  Model* _outputModel = nullptr;
 
-    struct Statistics {
-      int nSolns = 0;
-      int nFails = 0;
-      int nNodes = 0;
-    } _stats;
-    
-  public:
-     ~Solns2Out();
-    Solns2Out(std::ostream& os, std::ostream& log, const std::string& stdlibDir);
-    
-     bool processOption(int& i, std::vector<std::string>& argv);
-     void printHelp(std::ostream& );
+  typedef std::pair<VarDecl*, KeepAlive> DE;
+  ManagedASTStringMap<DE> _declmap;
+  Expression* _outputExpr = nullptr;
+  std::string _checkerModel;
+  std::string _statisticsCheckerModel;
+  bool _fNewSol2Print = false;  // should be set for evalOutput to work
+  std::string _stats;
+  // Mapping from FlatZinc variable name to the original `assume` expression text, used to
+  // report unsatisfiable cores (`%%%mzn-core:`) in terms of the user's expressions.
+  std::unordered_map<std::string, std::string> _assumptionMap;
 
-    /// The output model (~.ozn) can be passed in 1 way in this base class:
-    /// passing Env* containing output()
-     bool initFromEnv(Env* pE);
+public:
+  std::string solution;
+  std::string comments;
+  int nLinesIgnore = 0;
 
-    /// Then, variable assignments can be passed either as text
-    /// or put directly into envi()->output() ( latter done externally
-    /// by e.g. SolverInstance::assignSolutionToOutput() )
-    /// In the 1st case, (part of) the assignment text is passed as follows,
-    /// original end-of-lines need to be there as well
-     bool feedRawDataChunk( const char* );
-    
-    SolverInstance::Status status = SolverInstance::UNKNOWN;
-    bool fStatusPrinted = false;
-    /// Should be called when entering new solution into the output model.
-    /// Default assignSolutionToOutput() does it by using findOutputVar().
-    void declNewOutput();
+  struct Options {
+    std::string flagOutputFile;
+    bool flagOutputComments = true;
+    bool flagOutputFlush = true;
+    bool flagOutputTime = false;
+    int flagIgnoreLines = 0;
+    bool flagUnique = true;
+    bool flagCanonicalize = false;
+    bool flagStandaloneSolns2Out = false;
+    bool flagEncapsulateJSON = false;
+    std::string flagOutputNoncanonical;
+    std::string flagOutputRaw;
+    int flagNumberOutput = -1;
+    /// Default values, also used for input
+    const char* const solutionSeparatorDef = "----------";
+    const char* const unsatisfiableMsgDef = "=====UNSATISFIABLE=====";
+    const char* const unboundedMsgDef = "=====UNBOUNDED=====";
+    const char* const unsatorunbndMsgDef = "=====UNSATorUNBOUNDED=====";
+    const char* const unknownMsgDef = "=====UNKNOWN=====";
+    const char* const errorMsgDef = "=====ERROR=====";
+    const char* const searchCompleteMsgDef = "==========";
+    /// Output values
+    std::string solutionSeparator = solutionSeparatorDef;
+    std::string solutionComma;
+    std::string unsatisfiableMsg = unsatisfiableMsgDef;
+    std::string unboundedMsg = unboundedMsgDef;
+    std::string unsatorunbndMsg = unsatorunbndMsgDef;
+    std::string unknownMsg = unknownMsgDef;
+    std::string errorMsg = errorMsgDef;
+    std::string searchCompleteMsg = searchCompleteMsgDef;
 
-    /// This can be used by assignSolutionToOutput()    
-    DE& findOutputVar( ASTString );
-    
-    /// In the other case,
-    /// the evaluation procedures print output/status to os
-    /// returning false means need to stop (error/ too many solutions)
-    /// Solution validation here   TODO
-    /// Note that --canonicalize delays output
-    /// until ... exit, eof,  ??   TODO
-    /// These functions should only be called explicitly
-    /// from SolverInstance
-    bool evalOutput( const std::string& s_ExtraInfo = "" );
-    /// This means the solver exits
-    bool evalStatus(SolverInstance::Status status);
-    
-    void printStatistics(std::ostream& );
-    
-    Env* getEnv() const { return pEnv; }
-    Model* getModel() const { assert(getEnv()->output()); return getEnv()->output(); }
-    /// Get the primary output stream
-    /// First call restores stdout
-    std::ostream& getOutput();
-    /// Get the secondary output stream
-    std::ostream& getLog();
+    std::vector<std::string> checkerArgs = {"--solver", "org.minizinc.gecode_presolver"};
+  } opt;
 
-  private:
-    Timer starttime;
+  struct Statistics {
+    unsigned long long nSolns = 0;
+    unsigned long long nFails = 0;
+    unsigned long long nNodes = 0;
+  } stats;
 
-    std::unique_ptr<std::ostream> pOut;  // file output
-    std::unique_ptr<std::ostream> pOfs_non_canon;
-    std::unique_ptr<std::ostream> pOfs_raw;
-    std::set<std::string> sSolsCanon;
-    std::string line_part;   // non-finished line from last chunk
+  ~Solns2Out();
+  Solns2Out(std::ostream& os, std::ostream& log, std::string stdlibDir);
 
-    /// Initialise from ozn file
-    void initFromOzn(const std::string& filename);
-  protected:
-    std::ostream& os;
-    std::ostream& log;
-    std::vector<std::string> includePaths;
-    std::string stdlibDir;
-    
-    // Basically open output
-    void init();
-    std::map<std::string, SolverInstance::Status> mapInputStatus;
-    void createInputMap();
-    void restoreDefaults();
-    /// Parsing fznsolver's complete raw text output
-    void parseAssignments( std::string& );
-    /// Checking solution against checker model
-    void checkSolution( std::ostream& os );
-    void checkStatistics( std::ostream& os );
-    bool __evalOutput( std::ostream& os );
-    bool __evalOutputFinal( bool flag_flush );
-    bool __evalStatusMsg(SolverInstance::Status status);
-    
-  };
+  bool processOption(int& i, std::vector<std::string>& argv,
+                     const std::string& workingDir = std::string());
+  static void printHelp(std::ostream& os);
 
-  // Passthrough Solns2Out class
-  class Solns2Log {
-  private:
-    std::ostream& _log;
-    std::ostream& _err_log;
-  public:
-    Solns2Log(std::ostream& log, std::ostream& errLog) : _log(log), _err_log(errLog) {}
-    bool feedRawDataChunk(const char* data) { _log << data << std::flush; return true; }
-    std::ostream& getLog(void) { return _err_log; }
-  };
-  
+  /// The output model (~.ozn) can be passed in 1 way in this base class:
+  /// passing Env* containing output()
+  bool initFromEnv(Env* pE);
 
-}
+  /// Then, variable assignments can be passed either as text
+  /// or put directly into envi()->output() ( latter done externally
+  /// by e.g. SolverInstance::assignSolutionToOutput() )
+  /// In the 1st case, (part of) the assignment text is passed as follows,
+  /// original end-of-lines need to be there as well
+  bool feedRawDataChunk(const char* data);
+
+  SolverInstance::Status status = SolverInstance::UNKNOWN;
+  bool fStatusPrinted = false;
+  /// Should be called when entering new solution into the output model.
+  /// Default assignSolutionToOutput() does it by using findOutputVar().
+  void declNewOutput();
+
+  /// This can be used by assignSolutionToOutput()
+  DE& findOutputVar(const ASTString& name);
+
+  /// In the other case,
+  /// the evaluation procedures print output/status to os
+  /// returning false means need to stop (error/ too many solutions)
+  /// Solution validation here   TODO
+  /// Note that --canonicalize delays output
+  /// until ... exit, eof,  ??   TODO
+  /// These functions should only be called explicitly
+  /// from SolverInstance
+  bool evalOutput();
+  /// This means the solver exits
+  bool evalStatus(SolverInstance::Status status);
+
+  /// Print any statistics which have not yet been printed
+  void flushStatistics(std::ostream& os);
+
+  void printStatistics(std::ostream& os);
+
+  Env* getEnv() const { return _env; }
+  Model* getModel() const {
+    assert(getEnv()->output());
+    return getEnv()->output();
+  }
+  /// Get the primary output stream
+  /// First call restores stdout
+  std::ostream& getOutput();
+  /// Get the secondary output stream
+  std::ostream& getLog();
+
+private:
+  Timer _starttime;
+
+  std::unique_ptr<std::ostream> _outStream;  // file output
+  std::unique_ptr<std::ostream> _outStreamNonCanon;
+  std::unique_ptr<std::ostream> _outStreamRaw;
+  std::set<std::string> _sSolsCanon;
+  std::string _linePart;  // non-finished line from last chunk
+
+  /// Initialise from ozn file
+  void initFromOzn(const std::string& filename);
+
+protected:
+  std::ostream& _os;
+  std::ostream& _log;
+  std::vector<std::string> _includePaths;
+  std::string _stdlibDir;
+  /// Include path for the standard library (a bundle if one is available)
+  std::string stdIncludePath() const;
+
+  // Basically open output
+  void init();
+  std::unordered_map<std::string, SolverInstance::Status> _mapInputStatus;
+  void createInputMap();
+  void restoreDefaults();
+  /// Resolve the FlatZinc variable names in an unsatisfiable core (the bracketed payload of a
+  /// `%%%mzn-core:` line) back to the original `assume` expressions. Names without a recorded
+  /// mapping are returned unchanged.
+  std::vector<std::string> resolveAssumptionCore(const std::string& payload) const;
+  /// Parsing fznsolver's complete raw text output
+  void parseAssignments(std::string& solution);
+  /// Checking solution against checker model
+  void checkSolution(std::ostream& os) const;
+  void checkStatistics(std::ostream& os);
+  bool evalOutputInternal(std::ostream& fout);
+  bool evalOutputFinalInternal(bool flag_flush);
+  bool evalStatusMsg(SolverInstance::Status status);
+
+  void printSolution(std::istream& sol, std::ostream& os, bool outputTime);
+  void parseStatistics(const std::string& stats, std::ostream& os);
+};
+
+// Passthrough Solns2Out class
+class Solns2Log {
+private:
+  std::ostream& _log;
+  std::ostream& _errLog;
+
+public:
+  Solns2Log(std::ostream& log, std::ostream& errLog) : _log(log), _errLog(errLog) {}
+  bool feedRawDataChunk(const char* data) {
+    _log << data << std::flush;
+    return true;
+  }
+  std::ostream& getLog() { return _errLog; }
+};
+
+/// Marker-filtering wrapper around a Solns2Out, for interactive solvers.
+///
+/// An interactive solver shares the user's terminal and replies in its own
+/// vocabulary. When it wants to report a solution it brackets it with marker
+/// lines (\a beginMarker ... \a endMarker). This wrapper scans the solver's raw
+/// stdout: lines between the markers are forwarded to the wrapped Solns2Out as
+/// FlatZinc solution text (so they pass through the normal output/.ozn
+/// processing), the marker lines themselves are consumed, and everything else
+/// is echoed verbatim to the wrapped output stream. It satisfies the same
+/// concept Process<S2O> expects (feedRawDataChunk + getLog).
+class Solns2OutInteractive {
+private:
+  Solns2Out& _inner;
+  std::string _beginMarker;
+  std::string _endMarker;
+  std::string _linePart;               // unfinished line carried over from the previous chunk
+  std::string::size_type _echoed = 0;  // chars of _linePart already echoed verbatim
+  bool _inSolution = false;            // currently between a begin and end marker
+
+  /// Handle one complete line (without its trailing newline): consume markers,
+  /// forward solution text, or echo verbatim. Returns false to stop.
+  bool processCompleteLine(const std::string& line);
+
+public:
+  Solns2OutInteractive(Solns2Out& inner, std::string beginMarker, std::string endMarker)
+      : _inner(inner), _beginMarker(std::move(beginMarker)), _endMarker(std::move(endMarker)) {}
+  bool feedRawDataChunk(const char* data);
+  std::ostream& getLog() { return _inner.getLog(); }
+};
+
+}  // namespace MiniZinc

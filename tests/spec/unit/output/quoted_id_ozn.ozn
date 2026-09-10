@@ -1,0 +1,2 @@
+output let {array [int] of string: X_INTRODUCED_0_ = [show(10),'bar!']} in (["\"output\": {","\"default\": ",showJSON(concat(X_INTRODUCED_0_)),", \"raw\": ",showJSON(concat(X_INTRODUCED_0_)),"}, \"sections\": [\"default\", \"raw\"]"]);
+string: 'bar!' = "bar";

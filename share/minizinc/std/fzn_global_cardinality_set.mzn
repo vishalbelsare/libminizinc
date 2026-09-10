@@ -1,0 +1,5 @@
+predicate fzn_global_cardinality_set(
+  array [int] of var set of int: xs,
+  array [int] of int: cover,
+  array [int] of var int: count,
+) = forall (i in index_set(cover)) (count[i] = count (v in xs) (cover[i] in v));

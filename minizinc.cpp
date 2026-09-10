@@ -18,73 +18,121 @@
  * Need to get more flexible for multi-pass & multi-solving stuff  TODO
  */
 
-#include <iostream>
-#include <fstream>
-#include <iomanip>
-#include <cstdlib>
-#include <ctime>
-#include <chrono>
-#include <ratio>
-
 #include <minizinc/solver.hh>
 
-using namespace std;
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <ratio>
+
 using namespace MiniZinc;
 
-#ifdef _WIN32
-#include <minizinc/interrupt.hh>
+namespace {
 
-int wmain(int argc, wchar_t *argv[], wchar_t *envp[]) {
-  InterruptListener::run();
-#else
-int main(int argc, const char** argv) {
-#endif
-  Timer starttime;
-  bool fSuccess = false;
-
+int run(const std::string& exe, const std::vector<std::string>& args, bool jsonStream) {
   try {
-    MznSolver slv(std::cout,std::cerr);
+    Timer startTime;
+    bool fSuccess = false;
+    MznSolver slv(std::cout, std::cerr, startTime);
     try {
-      std::vector<std::string> args(argc-1);
-#ifdef _WIN32
-      for (int i = 1; i < argc; i++)
-        args[i - 1] = FileUtils::wideToUtf8(argv[i]);
-      fSuccess = (slv.run(args, "", FileUtils::wideToUtf8(argv[0])) != SolverInstance::ERROR);
-#else
-      for (int i=1; i<argc; i++)
-        args[i-1] = argv[i];
-      fSuccess = (slv.run(args,"",argv[0]) != SolverInstance::ERROR);
-#endif
-    } catch (const LocationException& e) {
-      if (slv.get_flag_verbose())
+      fSuccess = (slv.run(args, "", exe) != SolverInstance::ERROR);
+    } catch (const SignalRaised& e) {
+      // Interrupted, just terminate
+      if (slv.getFlagVerbose()) {
+        std::cerr << std::endl << "Interrupted." << std::endl;
+        std::cerr << "   Done (";
+        std::cerr << "overall time " << startTime.stoptime() << ")." << std::endl;
+      }
+      // Re-raise signal
+      e.raise();
+      return static_cast<int>(!fSuccess);
+    } catch (const InternalError& e) {
+      if (slv.getFlagVerbose()) {
         std::cerr << std::endl;
-      std::cerr << e.loc() << ":" << std::endl;
-      std::cerr << e.what() << ": " << e.msg() << std::endl;
+      }
+      std::cerr << "MiniZinc has encountered an internal error. This is a bug." << std::endl;
+      std::cerr << "Please file a bug report using the MiniZinc bug tracker." << std::endl;
+      std::cerr << "The internal error message was: " << std::endl;
+      std::cerr << "\"" << e.msg() << "\"" << std::endl;
     } catch (const Exception& e) {
-      if (slv.get_flag_verbose())
+      if (jsonStream || slv.flagEncapsulateJSON) {
+        e.json(std::cout);
+      } else {
+        if (slv.getFlagVerbose()) {
+          std::cerr << std::endl;
+        }
+        e.print(std::cerr);
+      }
+    } catch (const std::exception& e) {
+      if (slv.getFlagVerbose()) {
         std::cerr << std::endl;
-      std::string what = e.what();
-      std::cerr << what << (what.empty() ? "" : ": ") << e.msg() << std::endl;
-    }
-    catch (const exception& e) {
-      if (slv.get_flag_verbose())
-        std::cerr << std::endl;
+      }
       std::cerr << e.what() << std::endl;
-    }
-    catch (...) {
-      if (slv.get_flag_verbose())
+    } catch (...) {
+      if (slv.getFlagVerbose()) {
         std::cerr << std::endl;
+      }
       std::cerr << "  UNKNOWN EXCEPTION." << std::endl;
     }
-    
-    if (slv.get_flag_verbose()) {
+
+    if (slv.getFlagVerbose()) {
       std::cerr << "   Done (";
-      cerr << "overall time " << starttime.stoptime() << ")." << std::endl;
+      std::cerr << "overall time " << startTime.stoptime() << ")." << std::endl;
     }
-    return !fSuccess;
+    return static_cast<int>(!fSuccess);
   } catch (const Exception& e) {
     std::string what = e.what();
     std::cerr << what << (what.empty() ? "" : ": ") << e.msg() << std::endl;
     std::exit(EXIT_FAILURE);
   }
-}   // int main()
+}
+
+}  // namespace
+
+#ifdef _WIN32
+#include <minizinc/interrupt.hh>
+
+int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) {
+  InterruptListener::run();
+  OverflowHandler::install();
+  std::vector<std::string> args(argc - 1);
+  bool jsonStream = false;
+  for (int i = 1; i < argc; i++) {
+    args[i - 1] = FileUtils::wide_to_utf8(argv[i]);
+    if (args[i - 1] == "--json-stream") {
+      jsonStream = true;
+    }
+  }
+  auto exe = FileUtils::wide_to_utf8(argv[0]);
+
+#if defined(NDEBUG) && !defined(__MINGW32__)
+  // Lambda to prevent object unwinding not allowed with __try..__except
+  return ([&]() {
+    __try {
+      return run(exe, args, jsonStream);
+    } __except (OverflowHandler::filter(GetExceptionCode())) {
+      OverflowHandler::handle(GetExceptionCode());
+    }
+  })();
+#else
+  // Let debugger catch SEH exceptions
+  return run(exe, args, jsonStream);
+#endif
+}
+#else
+int main(int argc, const char** argv) {
+  OverflowHandler::install(argv);
+  std::vector<std::string> args(argc - 1);
+  bool jsonStream = false;
+  for (int i = 1; i < argc; i++) {
+    args[i - 1] = argv[i];
+    if (args[i - 1] == "--json-stream") {
+      jsonStream = true;
+    }
+  }
+  return run(argv[0], args, jsonStream);
+}
+#endif
